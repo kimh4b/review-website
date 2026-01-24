@@ -226,7 +226,7 @@ export function SubscriptionManagement() {
                 <XAxis dataKey="month" />
                 <YAxis />
                 <Tooltip />
-                <Legend />
+             
                 <Bar dataKey="basic" stackId="a" fill="#94a3b8" name="Basic" />
                 <Bar dataKey="pro" stackId="a" fill="#f97316" name="Pro" />
                 <Bar dataKey="enterprise" stackId="a" fill="#f59e0b" name="Enterprise" />
