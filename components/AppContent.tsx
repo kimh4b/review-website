@@ -80,7 +80,7 @@ export default function AppContent() {
         <div className="min-h-screen bg-white">
             {/* Header with shared handlers */}
             <Header
-                onLoginClick={() => setShowSignUp(true)}
+                onLoginClick={() => setShowLogin(true)}
                 onRequestDemo={() => setShowDemo(true)}
             />
 
