@@ -1,33 +1,193 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { TrendingUp, TrendingDown, MessageSquare, Star, Users, AlertCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, MessageSquare, Star, Users, AlertCircle, Loader2 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
-const recentFeedback = [
-  { id: 1, text: "Great food and excellent service!", rating: 5, time: "2 hours ago", sentiment: "positive" },
-  { id: 2, text: "Food was cold when it arrived", rating: 2, time: "3 hours ago", sentiment: "negative" },
-  { id: 3, text: "Amazing ambiance and atmosphere", rating: 5, time: "5 hours ago", sentiment: "positive" },
-  { id: 4, text: "Service was a bit slow but food was good", rating: 3, time: "6 hours ago", sentiment: "neutral" },
-  { id: 5, text: "Best restaurant in the area!", rating: 5, time: "8 hours ago", sentiment: "positive" },
-];
+interface FeedbackItem {
+  id: string;
+  rating: number;
+  comment: string;
+  submitted_at: string;
+  sentiment: "positive" | "neutral" | "negative";
+}
 
-const npsData = [
-  { month: "Jan", score: 45 },
-  { month: "Feb", score: 52 },
-  { month: "Mar", score: 58 },
-  { month: "Apr", score: 61 },
-  { month: "May", score: 65 },
-  { month: "Jun", score: 68 },
-];
+interface Stats {
+  totalResponses: number;
+  avgRating: number;
+  totalSurveys: number;
+  positiveCount: number;
+}
 
-const categoryData = [
-  { category: "Food Quality", score: 4.5 },
-  { category: "Service", score: 4.2 },
-  { category: "Ambiance", score: 4.7 },
-  { category: "Value", score: 4.0 },
-  { category: "Cleanliness", score: 4.8 },
-];
+function getSentiment(rating: number): "positive" | "neutral" | "negative" {
+  if (rating >= 4) return "positive";
+  if (rating === 3) return "neutral";
+  return "negative";
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins} minute${mins !== 1 ? "s" : ""} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs !== 1 ? "s" : ""} ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days !== 1 ? "s" : ""} ago`;
+}
 
 export function DashboardHome() {
+  const { user } = useAuth();
+  const supabase = createClient();
+
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<Stats>({
+    totalResponses: 0,
+    avgRating: 0,
+    totalSurveys: 0,
+    positiveCount: 0,
+  });
+  const [recentFeedback, setRecentFeedback] = useState<FeedbackItem[]>([]);
+  const [trendData, setTrendData] = useState<{ date: string; responses: number; rating: number }[]>([]);
+  const [categoryData, setCategoryData] = useState<{ category: string; score: number }[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchDashboardData();
+  }, [user]);
+
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      // 1. Get owner's surveys
+      const { data: surveys, error: surveyError } = await supabase
+        .from("surveys")
+        .select("id, title")
+        .eq("owner_id", user!.id);
+
+      if (surveyError) throw surveyError;
+
+      const surveyIds = (surveys || []).map((s: any) => s.id);
+      const surveyMap = Object.fromEntries((surveys || []).map((s: any) => [s.id, s.title]));
+
+      setStats((prev) => ({ ...prev, totalSurveys: surveyIds.length }));
+
+      if (surveyIds.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      // 2. Get all responses for those surveys
+      const { data: responses, error: respError } = await supabase
+        .from("survey_responses")
+        .select("id, survey_id, answers, submitted_at")
+        .in("survey_id", surveyIds)
+        .order("submitted_at", { ascending: false });
+
+      if (respError) throw respError;
+
+      const allResponses = responses || [];
+
+      // 3. Build stats
+      const ratings = allResponses.map((r: any) => {
+        const a = r.answers || {};
+        const raw = a.overall_rating ?? a.rating ?? a.food_quality ?? 3;
+        return typeof raw === "number" ? raw : parseInt(raw) || 3;
+      });
+
+      const avgRating = ratings.length
+        ? parseFloat((ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length).toFixed(1))
+        : 0;
+
+      const positiveCount = ratings.filter((r: number) => r >= 4).length;
+
+      setStats({
+        totalResponses: allResponses.length,
+        avgRating,
+        totalSurveys: surveyIds.length,
+        positiveCount,
+      });
+
+      // 4. Recent feedback (last 5)
+      const recent: FeedbackItem[] = allResponses.slice(0, 5).map((r: any) => {
+        const a = r.answers || {};
+        const raw = a.overall_rating ?? a.rating ?? a.food_quality ?? 3;
+        const rating = typeof raw === "number" ? raw : parseInt(raw) || 3;
+        const comment = a.comment ?? a.feedback ?? a.what_did_you_enjoy ?? "";
+        return {
+          id: r.id,
+          rating,
+          comment: typeof comment === "string" ? comment : "",
+          submitted_at: r.submitted_at,
+          sentiment: getSentiment(rating),
+        };
+      });
+      setRecentFeedback(recent);
+
+      // 5. Trend data — group by day (last 7 days)
+      const last7: Record<string, { ratings: number[]; count: number }> = {};
+      const today = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().split("T")[0];
+        last7[key] = { ratings: [], count: 0 };
+      }
+      allResponses.forEach((r: any) => {
+        const day = r.submitted_at?.split("T")[0];
+        if (day && last7[day]) {
+          const a = r.answers || {};
+          const raw = a.overall_rating ?? a.rating ?? a.food_quality ?? 3;
+          const rating = typeof raw === "number" ? raw : parseInt(raw) || 3;
+          last7[day].ratings.push(rating);
+          last7[day].count++;
+        }
+      });
+      const trend = Object.entries(last7).map(([date, { ratings, count }]) => ({
+        date: date.slice(5), // MM-DD
+        responses: count,
+        rating: ratings.length
+          ? parseFloat((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1))
+          : 0,
+      }));
+      setTrendData(trend);
+
+      // 6. Category breakdown — avg rating per survey
+      const catData = (surveys || []).map((s: any) => {
+        const surveyResponses = allResponses.filter((r: any) => r.survey_id === s.id);
+        const surveyRatings = surveyResponses.map((r: any) => {
+          const a = r.answers || {};
+          const raw = a.overall_rating ?? a.rating ?? a.food_quality ?? 3;
+          return typeof raw === "number" ? raw : parseInt(raw) || 3;
+        });
+        const avg = surveyRatings.length
+          ? parseFloat((surveyRatings.reduce((a: number, b: number) => a + b, 0) / surveyRatings.length).toFixed(1))
+          : 0;
+        return { category: s.title, score: avg };
+      });
+      setCategoryData(catData);
+
+    } catch (err: any) {
+      console.error("Dashboard error:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full py-32">
+        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+      </div>
+    );
+  }
+
+  const positiveRate = stats.totalResponses
+    ? Math.round((stats.positiveCount / stats.totalResponses) * 100)
+    : 0;
+
   return (
     <div className="p-4 lg:p-8 space-y-6">
       {/* Welcome */}
@@ -40,29 +200,12 @@ export function DashboardHome() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">NPS Score</CardTitle>
-            <Star className="w-4 h-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl mb-1">68</div>
-            <div className="flex items-center gap-1 text-sm text-green-600">
-              <TrendingUp className="w-4 h-4" />
-              <span>+3 from last month</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">Total Reviews</CardTitle>
+            <CardTitle className="text-sm">Total Responses</CardTitle>
             <MessageSquare className="w-4 h-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl mb-1">1,247</div>
-            <div className="flex items-center gap-1 text-sm text-green-600">
-              <TrendingUp className="w-4 h-4" />
-              <span>+12% this month</span>
-            </div>
+            <div className="text-3xl mb-1">{stats.totalResponses.toLocaleString()}</div>
+            <div className="text-sm text-gray-500">Across {stats.totalSurveys} survey{stats.totalSurveys !== 1 ? "s" : ""}</div>
           </CardContent>
         </Card>
 
@@ -72,69 +215,98 @@ export function DashboardHome() {
             <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl mb-1">4.6</div>
-            <div className="flex items-center gap-1 text-sm text-green-600">
-              <TrendingUp className="w-4 h-4" />
-              <span>+0.2 from last week</span>
+            <div className="text-3xl mb-1">{stats.avgRating || "—"}</div>
+            <div className="flex gap-0.5 mt-1">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Star
+                  key={i}
+                  className={`w-4 h-4 ${
+                    i <= Math.round(stats.avgRating)
+                      ? "text-yellow-500 fill-yellow-500"
+                      : "text-gray-300"
+                  }`}
+                />
+              ))}
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">Response Rate</CardTitle>
+            <CardTitle className="text-sm">Positive Rate</CardTitle>
+            <TrendingUp className="w-4 h-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl mb-1">{positiveRate}%</div>
+            <div className="text-sm text-gray-500">{stats.positiveCount} positive responses</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm">Active Surveys</CardTitle>
             <Users className="w-4 h-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl mb-1">94%</div>
-            <div className="flex items-center gap-1 text-sm text-red-600">
-              <TrendingDown className="w-4 h-4" />
-              <span>-2% this week</span>
-            </div>
+            <div className="text-3xl mb-1">{stats.totalSurveys}</div>
+            <div className="text-sm text-gray-500">Collecting feedback</div>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* NPS Trend */}
+        {/* Response Trend */}
         <Card>
           <CardHeader>
-            <CardTitle>NPS Score Trend</CardTitle>
+            <CardTitle>Response Trend (Last 7 Days)</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={npsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Line 
-                  type="monotone" 
-                  dataKey="score" 
-                  stroke="#f97316" 
-                  strokeWidth={2}
-                  dot={{ fill: "#f97316" }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {trendData.some((d) => d.responses > 0) ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="responses"
+                    stroke="#f97316"
+                    strokeWidth={2}
+                    dot={{ fill: "#f97316" }}
+                    name="Responses"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[250px] text-gray-400 text-sm">
+                No responses in the last 7 days
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Category Scores */}
+        {/* Category Ratings */}
         <Card>
           <CardHeader>
-            <CardTitle>Category Ratings</CardTitle>
+            <CardTitle>Avg Rating by Survey</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={categoryData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" angle={-45} textAnchor="end" height={80} />
-                <YAxis domain={[0, 5]} />
-                <Tooltip />
-                <Bar dataKey="score" fill="#f97316" />
-              </BarChart>
-            </ResponsiveContainer>
+            {categoryData.some((d) => d.score > 0) ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={categoryData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="category" angle={-45} textAnchor="end" height={80} />
+                  <YAxis domain={[0, 5]} />
+                  <Tooltip />
+                  <Bar dataKey="score" fill="#f97316" name="Avg Rating" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[250px] text-gray-400 text-sm">
+                No ratings yet
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -145,47 +317,57 @@ export function DashboardHome() {
           <CardTitle>Recent Feedback</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {recentFeedback.map((feedback) => (
-              <div 
-                key={feedback.id}
-                className="flex items-start gap-4 p-4 rounded-lg border border-gray-200 hover:border-orange-300 transition-colors"
-              >
-                <div className={`
-                  w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
-                  ${feedback.sentiment === 'positive' ? 'bg-green-100' : 
-                    feedback.sentiment === 'negative' ? 'bg-red-100' : 'bg-gray-100'}
-                `}>
-                  {feedback.sentiment === 'positive' ? '😊' : 
-                   feedback.sentiment === 'negative' ? '😞' : '😐'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="flex gap-0.5">
-                      {[...Array(5)].map((_, i) => (
-                        <Star 
-                          key={i} 
-                          className={`w-4 h-4 ${
-                            i < feedback.rating 
-                              ? 'text-yellow-500 fill-yellow-500' 
-                              : 'text-gray-300'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-sm text-gray-500">{feedback.time}</span>
+          {recentFeedback.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              No feedback yet — share your survey QR codes to get started
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentFeedback.map((feedback) => (
+                <div
+                  key={feedback.id}
+                  className="flex items-start gap-4 p-4 rounded-lg border border-gray-200 hover:border-orange-300 transition-colors"
+                >
+                  <div className={`
+                    w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
+                    ${feedback.sentiment === "positive" ? "bg-green-100" :
+                      feedback.sentiment === "negative" ? "bg-red-100" : "bg-gray-100"}
+                  `}>
+                    {feedback.sentiment === "positive" ? "😊" :
+                     feedback.sentiment === "negative" ? "😞" : "😐"}
                   </div>
-                  <p className="text-gray-700">{feedback.text}</p>
-                  {feedback.sentiment === 'negative' && (
-                    <div className="mt-2 flex items-center gap-2 text-sm text-orange-600">
-                      <AlertCircle className="w-4 h-4" />
-                      <span>Needs attention</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="flex gap-0.5">
+                        {[...Array(5)].map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`w-4 h-4 ${
+                              i < feedback.rating
+                                ? "text-yellow-500 fill-yellow-500"
+                                : "text-gray-300"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm text-gray-500">{timeAgo(feedback.submitted_at)}</span>
                     </div>
-                  )}
+                    {feedback.comment ? (
+                      <p className="text-gray-700">{feedback.comment}</p>
+                    ) : (
+                      <p className="text-gray-400 italic text-sm">No comment provided</p>
+                    )}
+                    {feedback.sentiment === "negative" && (
+                      <div className="mt-2 flex items-center gap-2 text-sm text-orange-600">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>Needs attention</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

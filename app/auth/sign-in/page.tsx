@@ -2,22 +2,27 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { LoginPage } from "@/components/auth/LoginPage";
 
 export default function SignInPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
+  const [checking, setChecking] = useState(true);
 
-  // If already logged in, go straight to dashboard
   useEffect(() => {
-    if (user) router.push("/dashboard");
-  }, [user]);
+    if (!loading) {
+      if (user) router.push("/dashboard");
+      else setChecking(false);
+    }
+  }, [user, loading]);
+
+  if (loading || checking) return null;
 
   return (
     <LoginPage
       onSignUpClick={() => router.push("/auth/sign-up")}
       onBack={() => router.push("/")}
     />
-  )
+  );
 }

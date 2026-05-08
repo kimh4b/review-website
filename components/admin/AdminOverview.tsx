@@ -1,99 +1,171 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Button } from "../ui/button";
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Store, 
-  Users, 
-  DollarSign, 
-  Activity,
-  AlertCircle,
-  CheckCircle
-} from "lucide-react";
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { Store, Users, FileText, MessageSquare, Loader2, Activity, CheckCircle } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { createClient } from "@/lib/supabase/client";
 
-const revenueData = [
-  { month: "Jan", revenue: 12400, customers: 45 },
-  { month: "Feb", revenue: 15800, customers: 58 },
-  { month: "Mar", revenue: 18200, customers: 67 },
-  { month: "Apr", revenue: 21500, customers: 78 },
-  { month: "May", revenue: 24800, customers: 89 },
-  { month: "Jun", revenue: 28400, customers: 102 },
-];
+interface Stats {
+  totalRestaurants: number;
+  totalSurveys: number;
+  totalResponses: number;
+  activeUsers: number;
+}
 
-const planDistribution = [
-  { name: "Basic", value: 45, color: "#94a3b8", revenue: "$2,205" },
-  { name: "Pro", value: 52, color: "#f97316", revenue: "$7,748" },
-  { name: "Enterprise", value: 18, color: "#f59e0b", revenue: "$12,600" },
-];
-
-const recentRestaurants = [
-  { id: 1, name: "The Golden Spoon", plan: "Pro", status: "active", joined: "2 hours ago" },
-  { id: 2, name: "Bella Italia", plan: "Basic", status: "active", joined: "5 hours ago" },
-  { id: 3, name: "Sushi Master", plan: "Enterprise", status: "trial", joined: "1 day ago" },
-  { id: 4, name: "Burger Haven", plan: "Pro", status: "active", joined: "1 day ago" },
-  { id: 5, name: "Vegan Delight", plan: "Basic", status: "active", joined: "2 days ago" },
-];
-
-const systemAlerts = [
-  { id: 1, type: "warning", message: "Server load at 85% - consider scaling", time: "10 min ago" },
-  { id: 2, type: "info", message: "Database backup completed successfully", time: "2 hours ago" },
-  { id: 3, type: "success", message: "Monthly revenue goal reached", time: "5 hours ago" },
-];
+interface RecentUser {
+  id: string;
+  email: string;
+  fullName: string;
+  restaurantName: string;
+  created_at: string;
+}
 
 export function AdminOverview() {
+  const supabase = createClient();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<Stats>({
+    totalRestaurants: 0,
+    totalSurveys: 0,
+    totalResponses: 0,
+    activeUsers: 0,
+  });
+  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
+  const [trendData, setTrendData] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // Total surveys
+      const { count: surveyCount } = await supabase
+        .from("surveys")
+        .select("*", { count: "exact", head: true });
+
+      // Total responses
+      const { count: responseCount } = await supabase
+        .from("survey_responses")
+        .select("*", { count: "exact", head: true });
+
+      // All users (via surveys - get unique owner_ids)
+      const { data: surveyData } = await supabase
+        .from("surveys")
+        .select("owner_id, created_at");
+
+      const uniqueOwners = new Set((surveyData || []).map((s: any) => s.owner_id));
+
+      setStats({
+        totalRestaurants: uniqueOwners.size,
+        totalSurveys: surveyCount || 0,
+        totalResponses: responseCount || 0,
+        activeUsers: uniqueOwners.size,
+      });
+
+      // Build trend data — responses per day last 7 days
+      const { data: responses } = await supabase
+        .from("survey_responses")
+        .select("submitted_at")
+        .order("submitted_at", { ascending: true });
+
+      const last7: Record<string, number> = {};
+      const today = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        last7[d.toISOString().split("T")[0]] = 0;
+      }
+      (responses || []).forEach((r: any) => {
+        const day = r.submitted_at?.split("T")[0];
+        if (day && last7[day] !== undefined) last7[day]++;
+      });
+      setTrendData(
+        Object.entries(last7).map(([date, count]) => ({
+          date: date.slice(5),
+          responses: count,
+        }))
+      );
+
+      // Recent surveys as proxy for recent activity
+      const { data: recentSurveys } = await supabase
+        .from("surveys")
+        .select("owner_id, title, created_at")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      // Map to display
+      const recent = (recentSurveys || []).map((s: any) => ({
+        id: s.owner_id,
+        email: "",
+        fullName: "Restaurant Owner",
+        restaurantName: s.title,
+        created_at: s.created_at,
+      }));
+      setRecentUsers(recent);
+
+    } catch (err: any) {
+      console.error("Admin overview error:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  function timeAgo(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const hrs = Math.floor(diff / 3600000);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full py-32">
+        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 lg:p-8 space-y-6">
-      {/* Welcome Section */}
       <div>
         <h2 className="text-3xl mb-2">Platform Overview</h2>
         <p className="text-gray-600">Monitor platform performance and key metrics</p>
       </div>
 
-      {/* Quick Stats */}
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">Total Restaurants</CardTitle>
+            <CardTitle className="text-sm">Restaurant Owners</CardTitle>
             <Store className="w-4 h-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl mb-1">115</div>
-            <p className="text-xs text-gray-600">active accounts</p>
-            <div className="flex items-center gap-1 text-sm text-green-600 mt-2">
-              <TrendingUp className="w-4 h-4" />
-              <span>+8 this month</span>
-            </div>
+            <div className="text-3xl mb-1">{stats.totalRestaurants}</div>
+            <p className="text-xs text-gray-600">registered accounts</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">Total Users</CardTitle>
-            <Users className="w-4 h-4 text-purple-500" />
+            <CardTitle className="text-sm">Total Surveys</CardTitle>
+            <FileText className="w-4 h-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl mb-1">342</div>
-            <p className="text-xs text-gray-600">platform users</p>
-            <div className="flex items-center gap-1 text-sm text-green-600 mt-2">
-              <TrendingUp className="w-4 h-4" />
-              <span>+24 this month</span>
-            </div>
+            <div className="text-3xl mb-1">{stats.totalSurveys}</div>
+            <p className="text-xs text-gray-600">across all restaurants</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm">Monthly Revenue</CardTitle>
-            <DollarSign className="w-4 h-4 text-green-500" />
+            <CardTitle className="text-sm">Total Responses</CardTitle>
+            <MessageSquare className="w-4 h-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl mb-1">$28,400</div>
-            <p className="text-xs text-gray-600">MRR (Monthly Recurring)</p>
-            <div className="flex items-center gap-1 text-sm text-green-600 mt-2">
-              <TrendingUp className="w-4 h-4" />
-              <span>+15% from last month</span>
-            </div>
+            <div className="text-3xl mb-1">{stats.totalResponses}</div>
+            <p className="text-xs text-gray-600">customer submissions</p>
           </CardContent>
         </Card>
 
@@ -103,9 +175,8 @@ export function AdminOverview() {
             <Activity className="w-4 h-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl mb-1">99.8%</div>
-            <p className="text-xs text-gray-600">uptime this month</p>
-            <div className="flex items-center gap-1 text-sm text-green-600 mt-2">
+            <div className="text-3xl mb-1">99.9%</div>
+            <div className="flex items-center gap-1 text-sm text-green-600 mt-1">
               <CheckCircle className="w-4 h-4" />
               <span>All systems operational</span>
             </div>
@@ -113,153 +184,53 @@ export function AdminOverview() {
         </Card>
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Trend */}
+        {/* Response Trend */}
         <Card>
-          <CardHeader>
-            <CardTitle>Revenue Growth</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Response Trend (Last 7 Days)</CardTitle></CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis yAxisId="left" />
-                <YAxis yAxisId="right" orientation="right" />
-                <Tooltip />
-                <Legend />
-                <Line 
-                  yAxisId="left"
-                  type="monotone" 
-                  dataKey="revenue" 
-                  stroke="#22c55e" 
-                  strokeWidth={2}
-                  name="Revenue ($)"
-                />
-                <Line 
-                  yAxisId="right"
-                  type="monotone" 
-                  dataKey="customers" 
-                  stroke="#f97316" 
-                  strokeWidth={2}
-                  name="Customers"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {trendData.some(d => d.responses > 0) ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={trendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="responses" stroke="#f97316" strokeWidth={2} name="Responses" />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
+                No responses in the last 7 days
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Plan Distribution */}
+        {/* Recent Activity */}
         <Card>
-          <CardHeader>
-            <CardTitle>Subscription Plans</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={planDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {planDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-4 space-y-2">
-              {planDistribution.map((plan, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: plan.color }} />
-                    <span>{plan.name}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-gray-600">{plan.value} accounts</span>
-                    <span className="font-medium">{plan.revenue}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Restaurants */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Recent Sign-ups</CardTitle>
-              <Button variant="outline" size="sm">View All</Button>
-            </div>
-          </CardHeader>
+          <CardHeader><CardTitle>Recent Surveys Created</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {recentRestaurants.map((restaurant) => (
-                <div key={restaurant.id} className="flex items-center justify-between p-3 border rounded-lg hover:border-orange-300 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600">
-                      <Store className="w-5 h-5" />
+              {recentUsers.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">No recent activity</div>
+              ) : (
+                recentUsers.map((item, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600">
+                        <Store className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">{item.restaurantName}</div>
+                        <div className="text-xs text-gray-500">New survey</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-medium">{restaurant.name}</div>
-                      <div className="text-sm text-gray-500">{restaurant.joined}</div>
-                    </div>
+                    <span className="text-xs text-gray-400">{timeAgo(item.created_at)}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm px-2 py-1 bg-orange-100 text-orange-700 rounded">
-                      {restaurant.plan}
-                    </span>
-                    <span className={`text-sm px-2 py-1 rounded ${
-                      restaurant.status === 'active' 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {restaurant.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* System Alerts */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>System Alerts</CardTitle>
-              <Button variant="outline" size="sm">View All</Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {systemAlerts.map((alert) => (
-                <div key={alert.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                  <div className={`
-                    w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
-                    ${alert.type === 'warning' ? 'bg-yellow-100' : 
-                      alert.type === 'success' ? 'bg-green-100' : 'bg-blue-100'}
-                  `}>
-                    {alert.type === 'warning' && <AlertCircle className="w-4 h-4 text-yellow-600" />}
-                    {alert.type === 'success' && <CheckCircle className="w-4 h-4 text-green-600" />}
-                    {alert.type === 'info' && <Activity className="w-4 h-4 text-blue-600" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm">{alert.message}</p>
-                    <p className="text-xs text-gray-500 mt-1">{alert.time}</p>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </CardContent>
         </Card>

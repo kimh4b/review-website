@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { Header } from "@/components/Header";
 import "../styles/globals.css";
 export const metadata: Metadata = {
   title: "FeedbackPro",
@@ -16,7 +15,6 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <AuthProvider>
-          <Header />
           {children}
         </AuthProvider>
       </body>

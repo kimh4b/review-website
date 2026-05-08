@@ -17,19 +17,23 @@ export function LoginPage({ onSignUpClick, onBack }: LoginPageProps) {
     const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsLoading(true);
+    const [error, setError] = useState("");
 
-        try {
-            await login(email, password);
-            toast.success("Welcome back!");
-        } catch (error) {
-            toast.error("Invalid credentials. Please try again.");
-        } finally {
-            setIsLoading(false);
-        }
-    };
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+  setError(""); // clear previous error
+
+  try {
+    await login(email, password);
+    toast.success("Welcome back!");
+  } catch (err: any) {
+    setError(err.message || "Invalid credentials. Please try again.");
+    toast.error(err.message || "Invalid credentials.");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-amber-50 flex items-center justify-center p-4">
@@ -54,7 +58,11 @@ export function LoginPage({ onSignUpClick, onBack }: LoginPageProps) {
                             Sign in to your account to continue
                         </p>
                     </div>
-
+{error && (
+  <div className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg my-3 p-3">
+    {error}
+  </div>
+)}
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>
@@ -127,9 +135,6 @@ export function LoginPage({ onSignUpClick, onBack }: LoginPageProps) {
                     </div>
                 </div>
 
-                <p className="text-center text-sm text-gray-500 mt-6">
-                    Demo: Use random email and password to sign in restuarant owner dashboard
-                </p>
             </div>
         </div>
     );

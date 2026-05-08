@@ -1,351 +1,205 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+"use client";
+
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { 
-  Search, 
-  MoreVertical, 
-  Eye, 
-  Mail, 
-  Ban,
-  CheckCircle,
-  Download,
-  UserX
-} from "lucide-react";
+import { Search, MoreVertical, Trash2, Download, Loader2, Users } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  restaurant: string;
-  role: "Owner" | "Admin" | "Member";
-  status: "active" | "suspended";
-  lastLogin: string;
-  joined: string;
+interface UserRow {
+  owner_id: string;
+  surveyCount: number;
+  responseCount: number;
+  firstSeen: string;
 }
 
-const mockUsers: User[] = [
-  {
-    id: "1",
-    name: "John Smith",
-    email: "john@goldenspoon.com",
-    restaurant: "The Golden Spoon",
-    role: "Owner",
-    status: "active",
-    lastLogin: "2 hours ago",
-    joined: "2024-01-15"
-  },
-  {
-    id: "2",
-    name: "Emily Brown",
-    email: "emily@goldenspoon.com",
-    restaurant: "The Golden Spoon",
-    role: "Admin",
-    status: "active",
-    lastLogin: "1 day ago",
-    joined: "2024-02-01"
-  },
-  {
-    id: "3",
-    name: "Maria Rossi",
-    email: "maria@bellaitalia.com",
-    restaurant: "Bella Italia",
-    role: "Owner",
-    status: "active",
-    lastLogin: "5 hours ago",
-    joined: "2024-02-20"
-  },
-  {
-    id: "4",
-    name: "Kenji Tanaka",
-    email: "kenji@sushimaster.com",
-    restaurant: "Sushi Master",
-    role: "Owner",
-    status: "active",
-    lastLogin: "3 hours ago",
-    joined: "2023-11-05"
-  },
-  {
-    id: "5",
-    name: "Yuki Yamamoto",
-    email: "yuki@sushimaster.com",
-    restaurant: "Sushi Master",
-    role: "Admin",
-    status: "active",
-    lastLogin: "12 hours ago",
-    joined: "2023-11-10"
-  },
-  {
-    id: "6",
-    name: "Tom Wilson",
-    email: "tom@sushimaster.com",
-    restaurant: "Sushi Master",
-    role: "Member",
-    status: "suspended",
-    lastLogin: "2 weeks ago",
-    joined: "2024-03-15"
-  },
-  {
-    id: "7",
-    name: "Mike Johnson",
-    email: "mike@burgerhaven.com",
-    restaurant: "Burger Haven",
-    role: "Owner",
-    status: "active",
-    lastLogin: "8 hours ago",
-    joined: "2024-12-01"
-  },
-  {
-    id: "8",
-    name: "Sarah Green",
-    email: "sarah@vegandelight.com",
-    restaurant: "Vegan Delight",
-    role: "Owner",
-    status: "active",
-    lastLogin: "1 day ago",
-    joined: "2024-03-10"
-  },
-];
-
 export function UserManagement() {
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const supabase = createClient();
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = 
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.restaurant.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === "all" || user.role === roleFilter;
-    const matchesStatus = statusFilter === "all" || user.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
-  const handleSuspend = (id: string) => {
-    setUsers(users.map(u => 
-      u.id === id ? { ...u, status: "suspended" as const } : u
-    ));
-    toast.success("User suspended");
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const { data: surveys } = await supabase
+        .from("surveys")
+        .select("owner_id, id, created_at");
+
+      const { data: responses } = await supabase
+        .from("survey_responses")
+        .select("survey_id");
+
+      const responseCounts: Record<string, number> = {};
+      (responses || []).forEach((r: any) => {
+        responseCounts[r.survey_id] = (responseCounts[r.survey_id] || 0) + 1;
+      });
+
+      const ownerMap: Record<string, UserRow> = {};
+      (surveys || []).forEach((s: any) => {
+        if (!ownerMap[s.owner_id]) {
+          ownerMap[s.owner_id] = {
+            owner_id: s.owner_id,
+            surveyCount: 0,
+            responseCount: 0,
+            firstSeen: s.created_at,
+          };
+        }
+        ownerMap[s.owner_id].surveyCount++;
+        ownerMap[s.owner_id].responseCount += responseCounts[s.id] || 0;
+        if (s.created_at < ownerMap[s.owner_id].firstSeen) {
+          ownerMap[s.owner_id].firstSeen = s.created_at;
+        }
+      });
+
+      setUsers(Object.values(ownerMap));
+    } catch (err: any) {
+      toast.error("Failed to load users: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleActivate = (id: string) => {
-    setUsers(users.map(u => 
-      u.id === id ? { ...u, status: "active" as const } : u
-    ));
-    toast.success("User activated");
-  };
+  const handleDelete = async (ownerId: string) => {
+    try {
+      const { error } = await supabase
+        .from("surveys")
+        .delete()
+        .eq("owner_id", ownerId);
 
-  const handleDelete = (id: string) => {
-    setUsers(users.filter(u => u.id !== id));
-    toast.success("User deleted");
+      if (error) throw error;
+      setUsers(prev => prev.filter(u => u.owner_id !== ownerId));
+      toast.success("User data deleted");
+    } catch (err: any) {
+      toast.error("Failed to delete: " + err.message);
+    }
   };
 
   const handleExport = () => {
-    toast.success("Exporting user data...");
+    const rows = [
+      ["Owner ID", "Surveys", "Responses", "First Seen"],
+      ...users.map(u => [u.owner_id, u.surveyCount, u.responseCount, u.firstSeen.split("T")[0]]),
+    ];
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "users.csv";
+    a.click();
+    toast.success("Exported!");
   };
+
+  const filtered = users.filter(u =>
+    u.owner_id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="p-4 lg:p-8 space-y-6">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl mb-1">User Management</h2>
-          <p className="text-gray-600">Manage all users across the platform</p>
+          <p className="text-gray-600">All restaurant owner accounts</p>
         </div>
-        <Button onClick={handleExport} className="bg-orange-500 hover:bg-orange-600">
+        <Button variant="outline" onClick={handleExport}>
           <Download className="w-4 h-4 mr-2" />
           Export Users
         </Button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl mb-1">{filteredUsers.length}</div>
-            <div className="text-sm text-gray-600">Total Users</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl mb-1">
-              {filteredUsers.filter(u => u.role === "Owner").length}
-            </div>
-            <div className="text-sm text-gray-600">Restaurant Owners</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl mb-1">
-              {filteredUsers.filter(u => u.status === "active").length}
-            </div>
-            <div className="text-sm text-gray-600">Active Users</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl mb-1">
-              {filteredUsers.filter(u => u.status === "suspended").length}
-            </div>
-            <div className="text-sm text-gray-600">Suspended</div>
-          </CardContent>
-        </Card>
+      {/* Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card><CardContent className="pt-6">
+          <div className="text-2xl mb-1">{users.length}</div>
+          <div className="text-sm text-gray-600">Total Users</div>
+        </CardContent></Card>
+        <Card><CardContent className="pt-6">
+          <div className="text-2xl mb-1">{users.reduce((s, u) => s + u.surveyCount, 0)}</div>
+          <div className="text-sm text-gray-600">Total Surveys Created</div>
+        </CardContent></Card>
+        <Card><CardContent className="pt-6">
+          <div className="text-2xl mb-1">{users.reduce((s, u) => s + u.responseCount, 0)}</div>
+          <div className="text-sm text-gray-600">Total Responses</div>
+        </CardContent></Card>
       </div>
 
-      {/* Filters */}
+      {/* Search */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search users, emails, or restaurants..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <div>
-              <Select value={roleFilter} onValueChange={setRoleFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="Owner">Owner</SelectItem>
-                  <SelectItem value="Admin">Admin</SelectItem>
-                  <SelectItem value="Member">Member</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="suspended">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search by user ID..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* Users Table */}
+      {/* Table */}
       <Card>
         <CardContent className="pt-6">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-4">User</th>
-                  <th className="text-left py-3 px-4">Restaurant</th>
-                  <th className="text-left py-3 px-4">Role</th>
-                  <th className="text-left py-3 px-4">Status</th>
-                  <th className="text-left py-3 px-4">Last Login</th>
-                  <th className="text-left py-3 px-4">Joined</th>
-                  <th className="text-left py-3 px-4">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4">
-                      <div>
-                        <div className="font-medium">{user.name}</div>
-                        <div className="text-sm text-gray-500">{user.email}</div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">{user.restaurant}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded text-sm ${
-                        user.role === "Owner" 
-                          ? "bg-orange-100 text-orange-700"
-                          : user.role === "Admin"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-gray-100 text-gray-700"
-                      }`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded text-sm ${
-                        user.status === "active"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-500">{user.lastLogin}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500">{user.joined}</td>
-                    <td className="py-3 px-4">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Profile
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Mail className="w-4 h-4 mr-2" />
-                            Send Email
-                          </DropdownMenuItem>
-                          {user.status === "suspended" ? (
-                            <DropdownMenuItem onClick={() => handleActivate(user.id)}>
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              Activate
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => handleSuspend(user.id)}>
-                              <Ban className="w-4 h-4 mr-2" />
-                              Suspend
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem 
-                            onClick={() => handleDelete(user.id)}
-                            className="text-red-600"
-                          >
-                            <UserX className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p>No users yet</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-4">User ID</th>
+                    <th className="text-left py-3 px-4">Surveys</th>
+                    <th className="text-left py-3 px-4">Responses</th>
+                    <th className="text-left py-3 px-4">First Seen</th>
+                    <th className="text-left py-3 px-4">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredUsers.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              No users match your filters
+                </thead>
+                <tbody>
+                  {filtered.map((u) => (
+                    <tr key={u.owner_id} className="border-b hover:bg-gray-50">
+                      <td className="py-3 px-4 font-mono text-sm text-gray-600">{u.owner_id}</td>
+                      <td className="py-3 px-4">{u.surveyCount}</td>
+                      <td className="py-3 px-4">{u.responseCount}</td>
+                      <td className="py-3 px-4 text-sm text-gray-500">{u.firstSeen.split("T")[0]}</td>
+                      <td className="py-3 px-4">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(u.owner_id)}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete User Data
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>

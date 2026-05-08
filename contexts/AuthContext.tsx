@@ -1,18 +1,19 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 interface User {
   id: string;
   email: string;
   fullName: string;
   restaurantName: string;
-  plan: "Basic" | "Pro" | "Enterprise";
-  role: "user" | "admin";  // <-- added
+  role: "user" | "admin";
 }
 
 interface AuthContextType {
   user: User | null;
+  loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (data: SignUpData) => Promise<void>;
   logout: () => void;
@@ -23,89 +24,68 @@ interface SignUpData {
   email: string;
   password: string;
   restaurantName: string;
-  plan?: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const ADMIN_EMAIL = "admin@gmail.com";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [lastActivity, setLastActivity] = useState(Date.now());
+  const [loading, setLoading] = useState(true);
+  const supabase = createClient();
 
-  // Idle timeout (30 minutes)
   useEffect(() => {
-    if (!user) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) buildUser(session.user);
+      setLoading(false);
+    });
 
-    const handleActivity = () => setLastActivity(Date.now());
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) buildUser(session.user);
+      else setUser(null);
+    });
 
-    window.addEventListener("mousemove", handleActivity);
-    window.addEventListener("keydown", handleActivity);
-    window.addEventListener("click", handleActivity);
+    return () => subscription.unsubscribe();
+  }, []);
 
-    const interval = setInterval(() => {
-      const idleTime = Date.now() - lastActivity;
-      const thirtyMinutes = 30 * 60 * 1000;
-      if (idleTime > thirtyMinutes) logout();
-    }, 60000);
-
-    return () => {
-      window.removeEventListener("mousemove", handleActivity);
-      window.removeEventListener("keydown", handleActivity);
-      window.removeEventListener("click", handleActivity);
-      clearInterval(interval);
-    };
-  }, [user, lastActivity]);
-
-  // 👑 Hardcoded admin account
-  const adminAccount = {
-    email: "admin@gmail.com",
-    password: "admin123", // demo only
+  const buildUser = (supabaseUser: any) => {
+    const meta = supabaseUser.user_metadata || {};
+    setUser({
+      id: supabaseUser.id,
+      email: supabaseUser.email,
+      fullName: meta.fullName || "User",
+      restaurantName: meta.restaurantName || "My Restaurant",
+      role: supabaseUser.email === ADMIN_EMAIL ? "admin" : "user",
+    });
   };
 
   const login = async (email: string, password: string) => {
-    await new Promise(resolve => setTimeout(resolve, 500)); // simulate API
-
-    // Check if admin
-    if (email === adminAccount.email && password === adminAccount.password) {
-      setUser({
-        id: "0",
-        email,
-        fullName: "Admin",
-        restaurantName: "Admin Restaurant",
-        plan: "Enterprise",
-        role: "admin",
-      });
-      return;
-    }
-
-    // Normal user login
-    setUser({
-      id: "1",
-      email,
-      fullName: "John Doe",
-      restaurantName: "The Golden Spoon",
-      plan: "Pro",
-      role: "user",
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message);
   };
 
   const signup = async (data: SignUpData) => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    setUser({
-      id: "1",
+    const { error } = await supabase.auth.signUp({
       email: data.email,
-      fullName: data.fullName,
-      restaurantName: data.restaurantName,
-      plan: (data.plan as "Basic" | "Pro" | "Enterprise") || "Basic",
-      role: "user",
+      password: data.password,
+      options: {
+        data: {
+          fullName: data.fullName,
+          restaurantName: data.restaurantName,
+        }
+      }
     });
+    if (error) throw new Error(error.message);
   };
 
-  const logout = () => setUser(null);
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

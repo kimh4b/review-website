@@ -1,7 +1,10 @@
+"use client";
+
 import { useState, useEffect } from "react";
 import { SurveyIntro } from "./SurveyIntro";
 import { SurveyForm } from "./SurveyForm";
 import { ThankYouPage } from "./ThankYouPage";
+import { createClient } from "@/lib/supabase/client";
 
 export type SurveyStep = "intro" | "form" | "thankyou";
 
@@ -10,7 +13,12 @@ interface SurveyData {
   surveyId: string;
   surveyName: string;
   isAuthenticated: boolean;
-  userEmail?: string;
+}
+
+interface Question {
+  id: string;
+  question: string;
+  type: string;
 }
 
 interface SurveyFlowProps {
@@ -18,60 +26,116 @@ interface SurveyFlowProps {
   onClose?: () => void;
 }
 
-export function SurveyFlow({ surveyId = "1", onClose }: SurveyFlowProps) {
+export function SurveyFlow({ surveyId = "", onClose }: SurveyFlowProps) {
+  const supabase = createClient();
   const [currentStep, setCurrentStep] = useState<SurveyStep>("intro");
-  const [surveyData] = useState<SurveyData>({
-    restaurantName: "Cha Kroeung-ឆាគ្រឿង",
+  const [surveyData, setSurveyData] = useState<SurveyData>({
+    restaurantName: "Loading...",
     surveyId,
-    surveyName: "Customer Experience Survey",
-    isAuthenticated: false
+    surveyName: "Customer Feedback",
+    isAuthenticated: false,
   });
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [responses, setResponses] = useState<Record<string, any>>({});
+  const [notFound, setNotFound] = useState(false);
 
-  // Auto-save responses to localStorage
   useEffect(() => {
-    if (Object.keys(responses).length > 0) {
-      localStorage.setItem(`survey_${surveyId}_draft`, JSON.stringify(responses));
-    }
-  }, [responses, surveyId]);
-
-  // Load saved responses on mount
-  useEffect(() => {
-    const saved = localStorage.getItem(`survey_${surveyId}_draft`);
-    if (saved) {
-      setResponses(JSON.parse(saved));
-    }
+    if (!surveyId) return;
+    fetchSurveyData();
+    loadDraft();
   }, [surveyId]);
 
-  const handleStart = (isAnonymous: boolean) => {
-    if (!isAnonymous) {
-      // In a real app, this would trigger social login
-      surveyData.isAuthenticated = true;
-      surveyData.userEmail = "customer@email.com";
+  const fetchSurveyData = async () => {
+    try {
+      // Fetch survey info
+      const { data: survey, error } = await supabase
+        .from("surveys")
+        .select("id, title, owner_id, restaurant_name")
+        .eq("id", surveyId)
+        .single();
+
+      if (error || !survey) {
+        setNotFound(true);
+        return;
+      }
+
+      // Try to get restaurant name from owner's metadata
+      // We store it in the survey owner's user metadata
+      // For now use survey title as fallback
+      setSurveyData({
+        restaurantName: survey.restaurant_name || survey.title,
+        surveyId: survey.id,
+        surveyName: survey.title,
+        isAuthenticated: false,
+      });
+
+      // Fetch questions
+      const { data: qs } = await supabase
+        .from("survey_questions")
+        .select("id, question, type")
+        .eq("survey_id", surveyId)
+        .order("order_index", { ascending: true });
+
+      setQuestions(qs || []);
+    } catch (err) {
+      setNotFound(true);
     }
+  };
+
+  const loadDraft = () => {
+    try {
+      const saved = localStorage.getItem(`survey_${surveyId}_draft`);
+      if (saved) setResponses(JSON.parse(saved));
+    } catch {}
+  };
+
+  const handleStart = () => {
     setCurrentStep("form");
   };
 
-  const handleSubmit = (formData: Record<string, any>) => {
-    setResponses(formData);
-    // Clear draft
-    localStorage.removeItem(`survey_${surveyId}_draft`);
-    setCurrentStep("thankyou");
+  const handleSubmit = async (formData: Record<string, any>) => {
+    try {
+      await supabase.from("survey_responses").insert({
+        survey_id: surveyId,
+        answers: formData,
+      });
+    } catch (err) {
+      console.error("Failed to save response:", err);
+    } finally {
+      localStorage.removeItem(`survey_${surveyId}_draft`);
+      setResponses(formData);
+      setCurrentStep("thankyou");
+    }
   };
 
   const handleUpdateResponses = (data: Record<string, any>) => {
     setResponses(data);
+    if (Object.keys(data).length > 0) {
+      localStorage.setItem(`survey_${surveyId}_draft`, JSON.stringify(data));
+    }
   };
+
+  if (notFound) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl mb-2">Survey not found</h2>
+          <p className="text-gray-600">This survey link may be invalid or expired.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       {currentStep === "intro" && (
-        <SurveyIntro 
+        <SurveyIntro
           restaurantName={surveyData.restaurantName}
+          questions={questions}
           onStart={handleStart}
         />
       )}
-      
+
       {currentStep === "form" && (
         <SurveyForm
           surveyData={surveyData}
@@ -80,11 +144,10 @@ export function SurveyFlow({ surveyId = "1", onClose }: SurveyFlowProps) {
           onUpdate={handleUpdateResponses}
         />
       )}
-      
+
       {currentStep === "thankyou" && (
         <ThankYouPage
           restaurantName={surveyData.restaurantName}
-          isAuthenticated={surveyData.isAuthenticated}
           onClose={onClose}
         />
       )}

@@ -1,49 +1,92 @@
-import { useState } from "react";
+"use client";
+
+import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Download, Copy, Check, RefreshCw, ExternalLink } from "lucide-react";
+import { Download, Copy, Check, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+
+interface Survey {
+  id: string;
+  name: string;
+}
 
 export function QRGenerator() {
-  const [survey, setSurvey] = useState("1");
+  const { user } = useAuth();
+  const supabase = createClient();
+
+  const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [loadingSurveys, setLoadingSurveys] = useState(true);
+  const [selectedSurveyId, setSelectedSurveyId] = useState<string>("");
   const [brandColor, setBrandColor] = useState("#f97316");
-  const [includelogo, setIncludeLogo] = useState(true);
-  const [size, setSize] = useState("medium");
+  const [size, setSize] = useState<"200" | "300" | "400">("300");
   const [copied, setCopied] = useState(false);
 
-  const qrUrl = `${window.location.origin}?survey=${survey}`;
+  useEffect(() => {
+    if (!user) return;
+    fetchSurveys();
+  }, [user]);
 
-  const handleDownloadPNG = () => {
-    toast.success("QR code downloaded as PNG");
+  const fetchSurveys = async () => {
+    setLoadingSurveys(true);
+    try {
+      const { data, error } = await supabase
+        .from("surveys")
+        .select("id, title")
+        .eq("owner_id", user!.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const mapped = (data || []).map((s: any) => ({
+        id: s.id,
+        name: s.title,
+      }));
+
+      setSurveys(mapped);
+      if (mapped.length > 0) setSelectedSurveyId(mapped[0].id);
+    } catch (err: any) {
+      toast.error("Failed to load surveys: " + err.message);
+    } finally {
+      setLoadingSurveys(false);
+    }
   };
 
-  const handleDownloadSVG = () => {
-    toast.success("QR code downloaded as SVG");
-  };
+  const surveyUrl = selectedSurveyId
+    ? `${window.location.origin}/survey/${selectedSurveyId}`
+    : "";
+
+  // Use goqr.me free API to generate a real QR code
+  const qrImageUrl = surveyUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(surveyUrl)}&color=${brandColor.replace("#", "")}&bgcolor=ffffff`
+    : "";
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(qrUrl);
+    if (!surveyUrl) return;
+    navigator.clipboard.writeText(surveyUrl);
     setCopied(true);
     toast.success("Link copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handlePrint = () => {
-    window.print();
-    toast.success("Print dialog opened");
+  const handleDownloadPNG = () => {
+    if (!qrImageUrl) return;
+    const link = document.createElement("a");
+    link.href = qrImageUrl;
+    link.download = `survey-qr-${selectedSurveyId}.png`;
+    link.target = "_blank";
+    link.click();
+    toast.success("QR code downloaded");
   };
 
   const handleTestSurvey = () => {
-    window.open(qrUrl, '_blank');
-  };
-
-  const sizeMap = {
-    small: "200px",
-    medium: "300px",
-    large: "400px"
+    if (!surveyUrl) return;
+    window.open(surveyUrl, "_blank");
   };
 
   return (
@@ -51,176 +94,142 @@ export function QRGenerator() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
           <h2 className="text-2xl mb-1">QR Code Generator</h2>
-          <p className="text-gray-600">Create customized QR codes for your surveys</p>
+          <p className="text-gray-600">Create QR codes for your surveys</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Customize Your QR Code</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="survey-select">Select Survey</Label>
-                <Select value={survey} onValueChange={setSurvey}>
-                  <SelectTrigger id="survey-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Food Quality Survey</SelectItem>
-                    <SelectItem value="2">Service Experience</SelectItem>
-                    <SelectItem value="3">Ambiance & Atmosphere</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="size-select">QR Code Size</Label>
-                <Select value={size} onValueChange={setSize}>
-                  <SelectTrigger id="size-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="small">Small (200x200px)</SelectItem>
-                    <SelectItem value="medium">Medium (300x300px)</SelectItem>
-                    <SelectItem value="large">Large (400x400px)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="brand-color">Brand Color</Label>
-                <div className="flex gap-3">
-                  <Input
-                    id="brand-color"
-                    type="color"
-                    value={brandColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    className="w-20 h-10"
-                  />
-                  <Input
-                    type="text"
-                    value={brandColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    className="flex-1"
-                  />
+        {loadingSurveys ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+          </div>
+        ) : surveys.length === 0 ? (
+          <div className="text-center py-20 text-gray-500">
+            <p className="text-lg mb-2">No surveys found</p>
+            <p className="text-sm">Create a survey first to generate a QR code</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Settings */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Customize Your QR Code</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Survey selector */}
+                <div className="space-y-2">
+                  <Label htmlFor="survey-select">Select Survey</Label>
+                  <Select value={selectedSurveyId} onValueChange={setSelectedSurveyId}>
+                    <SelectTrigger id="survey-select">
+                      <SelectValue placeholder="Choose a survey" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {surveys.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="include-logo"
-                  checked={includelogo}
-                  onChange={(e) => setIncludeLogo(e.target.checked)}
-                  className="rounded"
-                />
-                <Label htmlFor="include-logo" className="cursor-pointer">
-                  Include logo in center
-                </Label>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Survey Link</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={qrUrl}
-                    readOnly
-                    className="flex-1"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyLink}
-                  >
-                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </Button>
+                {/* Size */}
+                <div className="space-y-2">
+                  <Label htmlFor="size-select">QR Code Size</Label>
+                  <Select value={size} onValueChange={(v) => setSize(v as any)}>
+                    <SelectTrigger id="size-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="200">Small (200x200px)</SelectItem>
+                      <SelectItem value="300">Medium (300x300px)</SelectItem>
+                      <SelectItem value="400">Large (400x400px)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
 
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={handleTestSurvey}
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Test Survey (Opens in new tab)
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Preview & Download */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Preview</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg">
-                <div 
-                  className="bg-white p-6 rounded-lg shadow-lg relative"
-                  style={{ 
-                    width: sizeMap[size as keyof typeof sizeMap],
-                    height: sizeMap[size as keyof typeof sizeMap]
-                  }}
-                >
-                  {/* Mock QR Code */}
-                  <div className="w-full h-full grid grid-cols-8 gap-1">
-                    {[...Array(64)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="aspect-square rounded-sm"
-                        style={{
-                          backgroundColor: Math.random() > 0.5 ? brandColor : 'white'
-                        }}
-                      />
-                    ))}
+                {/* Brand Color */}
+                <div className="space-y-2">
+                  <Label htmlFor="brand-color">QR Code Color</Label>
+                  <div className="flex gap-3">
+                    <Input
+                      id="brand-color"
+                      type="color"
+                      value={brandColor}
+                      onChange={(e) => setBrandColor(e.target.value)}
+                      className="w-20 h-10"
+                    />
+                    <Input
+                      type="text"
+                      value={brandColor}
+                      onChange={(e) => setBrandColor(e.target.value)}
+                      className="flex-1"
+                    />
                   </div>
-                  
-                  {/* Logo overlay */}
-                  {includelogo && (
-                    <div 
-                      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-3 rounded-lg shadow"
-                    >
-                      <div 
-                        className="w-12 h-12 rounded flex items-center justify-center"
-                        style={{ backgroundColor: brandColor }}
-                      >
-                        <span className="text-white text-xl">★</span>
-                      </div>
+                </div>
+
+                {/* Survey Link */}
+                <div className="space-y-2">
+                  <Label>Survey Link</Label>
+                  <div className="flex gap-2">
+                    <Input value={surveyUrl} readOnly className="flex-1 text-sm" />
+                    <Button variant="outline" size="sm" onClick={handleCopyLink}>
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <Button variant="outline" className="w-full" onClick={handleTestSurvey}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Test Survey (Opens in new tab)
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Preview & Download */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Preview</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg">
+                  {qrImageUrl ? (
+                    <img
+                      src={qrImageUrl}
+                      alt="QR Code"
+                      width={parseInt(size)}
+                      height={parseInt(size)}
+                      className="rounded-lg shadow-lg"
+                    />
+                  ) : (
+                    <div className="w-48 h-48 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400">
+                      Select a survey
                     </div>
                   )}
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Button onClick={handleDownloadPNG} className="bg-orange-500 hover:bg-orange-600">
+                <div className="space-y-3">
+                  <Button
+                    onClick={handleDownloadPNG}
+                    className="w-full bg-orange-500 hover:bg-orange-600"
+                    disabled={!qrImageUrl}
+                  >
                     <Download className="w-4 h-4 mr-2" />
-                    PNG
-                  </Button>
-                  <Button onClick={handleDownloadSVG} variant="outline">
-                    <Download className="w-4 h-4 mr-2" />
-                    SVG
+                    Download QR Code (PNG)
                   </Button>
                 </div>
-                <Button onClick={handlePrint} variant="outline" className="w-full">
-                  Print QR Code
-                </Button>
-              </div>
 
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                <h4 className="text-sm mb-2">Tips for best results:</h4>
-                <ul className="text-sm text-gray-700 space-y-1 list-disc list-inside">
-                  <li>Use high contrast colors for better scanning</li>
-                  <li>Print at least 2x2 inches for reliable scanning</li>
-                  <li>Test the QR code before mass printing</li>
-                  <li>Place codes at eye level for easy access</li>
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <h4 className="text-sm mb-2">Tips for best results:</h4>
+                  <ul className="text-sm text-gray-700 space-y-1 list-disc list-inside">
+                    <li>Use high contrast colors for better scanning</li>
+                    <li>Print at least 2x2 inches for reliable scanning</li>
+                    <li>Test the QR code before mass printing</li>
+                    <li>Place codes at eye level for easy access</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Placement Ideas */}
         <Card className="mt-6">

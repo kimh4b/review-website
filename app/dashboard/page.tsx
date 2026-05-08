@@ -7,17 +7,22 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { AdminDashboardLayout } from "@/components/admin/AdminDashboardLayout";
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!user) router.push("/auth/sign-in");
-  }, [user]);
+    if (!loading && !user) router.push("/auth/sign-in");
+  }, [user, loading]);
+
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
   if (!user) return null;
 
-  // Show admin or user dashboard based on role
   if (user.role === "admin") return <AdminDashboardLayout />;
-  
+
   return <DashboardLayout />;
 }
