@@ -239,17 +239,17 @@ export function QRGenerator() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 border rounded-lg">
-                <div className="text-2xl mb-2">📋</div>
+      
                 <h4 className="mb-1">Table Tents</h4>
                 <p className="text-sm text-gray-600">Place on dining tables for immediate feedback</p>
               </div>
               <div className="p-4 border rounded-lg">
-                <div className="text-2xl mb-2">🧾</div>
+             
                 <h4 className="mb-1">Receipts</h4>
                 <p className="text-sm text-gray-600">Print QR codes on customer receipts</p>
               </div>
               <div className="p-4 border rounded-lg">
-                <div className="text-2xl mb-2">🚪</div>
+               
                 <h4 className="mb-1">Exit Signs</h4>
                 <p className="text-sm text-gray-600">Catch customers as they leave</p>
               </div>

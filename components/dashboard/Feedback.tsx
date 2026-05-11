@@ -76,28 +76,54 @@ export function Feedback() {
       const daysAgo = new Date();
       daysAgo.setDate(daysAgo.getDate() - parseInt(dateRange));
 
-      const { data: responseData, error: responseError } = await supabase
-        .from("survey_responses")
-        .select("id, survey_id, answers, submitted_at")
-        .in("survey_id", surveyIds)
-        .gte("submitted_at", daysAgo.toISOString())
-        .order("submitted_at", { ascending: false });
+      // Fetch responses and questions in parallel
+      const [{ data: responseData, error: responseError }, { data: questionsData }] = await Promise.all([
+        supabase
+          .from("survey_responses")
+          .select("id, survey_id, answers, submitted_at")
+          .in("survey_id", surveyIds)
+          .gte("submitted_at", daysAgo.toISOString())
+          .order("submitted_at", { ascending: false }),
+        supabase
+          .from("survey_questions")
+          .select("id, type")
+          .in("survey_id", surveyIds),
+      ]);
 
       if (responseError) throw responseError;
+
+      // Map question id → type so we know which answers are text
+      const questionTypeMap = Object.fromEntries(
+        (questionsData || []).map((q: any) => [q.id, q.type])
+      );
 
       const surveyMap = Object.fromEntries(surveyList.map((s) => [s.id, s.name]));
 
       const mapped: FeedbackItem[] = (responseData || []).map((r: any) => {
         const answers = r.answers || {};
-        const rating = answers.overall_rating || answers.rating || answers.food_quality || 3;
-        const comment = answers.comment || answers.feedback || answers.what_did_you_enjoy || "";
+
+        // Average ALL numeric values between 1-5 (rating questions)
+        const ratingValues = Object.values(answers).filter(
+          (v: any) => typeof v === "number" && v >= 1 && v <= 5
+        ) as number[];
+        const rating = ratingValues.length > 0
+          ? Math.round(ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length)
+          : 3;
+
+        // Only get answers from "text" type questions as comment
+        const comment = Object.entries(answers)
+          .filter(([key]) => questionTypeMap[key] === "text")
+          .map(([, value]) => typeof value === "string" ? value.trim() : "")
+          .filter(v => v.length > 0)
+          .join(" • ");
+
         return {
           id: r.id,
           date: r.submitted_at?.split("T")[0] || "",
-          rating: typeof rating === "number" ? rating : parseInt(rating) || 3,
+          rating,
           surveyName: surveyMap[r.survey_id] || "Unknown Survey",
-          comment: typeof comment === "string" ? comment : "",
-          sentiment: getSentiment(typeof rating === "number" ? rating : parseInt(rating) || 3),
+          comment,
+          sentiment: getSentiment(rating),
         };
       });
 
@@ -153,7 +179,7 @@ export function Feedback() {
   const handleExportCSV = () => {
     const rows = [
       ["Date", "Survey", "Rating", "Sentiment", "Comment"],
-      ...filteredFeedback.map((f) => [f.date, f.surveyName, f.rating, f.sentiment, f.comment]),
+      ...filteredFeedback.map((f) => [f.date, f.surveyName, f.rating, f.sentiment, `"${f.comment}"`]),
     ];
     const csv = rows.map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });

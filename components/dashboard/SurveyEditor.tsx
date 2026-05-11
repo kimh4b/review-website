@@ -43,13 +43,7 @@ export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
         description: survey?.description || "",
     });
 
-    const [questions, setQuestions] = useState<Question[]>(
-        survey?.id ? [] : [
-            { id: "1", type: "rating", text: "How would you rate your overall experience?", required: true, options: [] },
-            { id: "2", type: "text", text: "What did you enjoy most about your visit?", required: false, options: [] },
-        ]
-    );
-
+    const [questions, setQuestions] = useState<Question[]>([]);
     useEffect(() => {
         if (!survey?.id) return;
 
@@ -279,10 +273,10 @@ export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
                                                                 <SelectValue />
                                                             </SelectTrigger>
                                                             <SelectContent>
-                                                                <SelectItem value="rating">⭐ Rating</SelectItem>
-                                                                <SelectItem value="text">📝 Text</SelectItem>
-                                                                <SelectItem value="multiple-choice">☑️ Multiple Choice</SelectItem>
-                                                                <SelectItem value="yes-no">✅ Yes / No</SelectItem>
+                                                                <SelectItem value="rating"> Rating</SelectItem>
+                                                                <SelectItem value="text"> Text</SelectItem>
+                                                                <SelectItem value="multiple-choice"> Multiple Choice</SelectItem>
+                                                                <SelectItem value="yes-no"> Yes / No</SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
@@ -333,9 +327,7 @@ export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
                                                                 <Plus className="w-4 h-4 mr-1" />
                                                                 Add Option
                                                             </Button>
-                                                            {(question.options || []).length === 0 && (
-                                                                <p className="text-xs text-gray-400">Click "Add Option" to add answer choices</p>
-                                                            )}
+                                                           
                                                         </div>
                                                     )}
 
