@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { Card } from "../ui/card";
-import { Star, ArrowRight, ArrowLeft, AlertCircle, Loader2 } from "lucide-react";
+import { Star, ArrowRight, ArrowLeft, AlertCircle, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
@@ -44,7 +44,6 @@ export function SurveyForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showValidation, setShowValidation] = useState(false);
 
-  // Load questions from Supabase
   useEffect(() => {
     if (!surveyData.surveyId) return;
     fetchQuestions();
@@ -62,46 +61,24 @@ export function SurveyForm({
       if (error) throw error;
 
       if (!data || data.length === 0) {
-        // Fallback: use default questions if none saved
         setQuestions([
-          {
-            id: "overall",
-            type: "rating",
-            question: "How would you rate your overall experience?",
-            required: true,
-            order_index: 0,
-          },
-          {
-            id: "comment",
-            type: "text",
-            question: "Any additional comments?",
-            required: false,
-            order_index: 1,
-          },
+          { id: "overall", type: "rating", question: "How would you rate your overall experience?", required: true, order_index: 0 },
+          { id: "comment", type: "text", question: "Any additional comments?", required: false, order_index: 1 },
         ]);
       } else {
-        setQuestions(
-          data.map((q: any) => ({
-            id: q.id,
-            type: q.type as Question["type"],
-            question: q.question,
-            required: q.required ?? false,
-            options: q.options || [],
-            order_index: q.order_index,
-          }))
-        );
+        setQuestions(data.map((q: any) => ({
+          id: q.id,
+          type: q.type as Question["type"],
+          question: q.question,
+          required: q.required ?? false,
+          options: q.options || [],
+          order_index: q.order_index,
+        })));
       }
     } catch (err: any) {
       toast.error("Failed to load questions");
-      // Fallback questions
       setQuestions([
-        {
-          id: "overall",
-          type: "rating",
-          question: "How would you rate your overall experience?",
-          required: true,
-          order_index: 0,
-        },
+        { id: "overall", type: "rating", question: "How would you rate your overall experience?", required: true, order_index: 0 },
       ]);
     } finally {
       setLoading(false);
@@ -111,14 +88,21 @@ export function SurveyForm({
   const question = questions[currentQuestion];
   const progress = questions.length > 0 ? ((currentQuestion + 1) / questions.length) * 100 : 0;
 
-  // Auto-save responses
   useEffect(() => {
     onUpdate(responses);
   }, [responses]);
 
+  const hasAnswer = (q: Question) => {
+    const val = responses[q.id];
+    if (q.type === "multiple-choice") {
+      return Array.isArray(val) && val.length > 0;
+    }
+    return val !== undefined && val !== null && val !== "";
+  };
+
   const validateCurrentQuestion = () => {
     if (!question) return true;
-    if (question.required && !responses[question.id]) {
+    if (question.required && !hasAnswer(question)) {
       setErrors({ [question.id]: "This field is required" });
       setShowValidation(true);
       return false;
@@ -151,7 +135,7 @@ export function SurveyForm({
   const handleSubmit = () => {
     const newErrors: Record<string, string> = {};
     questions.forEach((q) => {
-      if (q.required && !responses[q.id]) {
+      if (q.required && !hasAnswer(q)) {
         newErrors[q.id] = "This field is required";
       }
     });
@@ -172,9 +156,17 @@ export function SurveyForm({
     if (!question) return;
     const updated = { ...responses, [question.id]: value };
     setResponses(updated);
-    if (errors[question.id]) {
-      setErrors({ ...errors, [question.id]: "" });
-    }
+    if (errors[question.id]) setErrors({ ...errors, [question.id]: "" });
+  };
+
+  // Toggle a multiple choice option in/out of the selected array
+  const toggleMultipleChoice = (option: string) => {
+    if (!question) return;
+    const current: string[] = Array.isArray(responses[question.id]) ? responses[question.id] : [];
+    const updated = current.includes(option)
+      ? current.filter(o => o !== option)
+      : [...current, option];
+    updateResponse(updated);
   };
 
   if (loading) {
@@ -192,6 +184,8 @@ export function SurveyForm({
       </div>
     );
   }
+
+  const selectedOptions: string[] = Array.isArray(responses[question.id]) ? responses[question.id] : [];
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -224,6 +218,9 @@ export function SurveyForm({
               {question.question}
               {question.required && <span className="text-red-500 ml-1">*</span>}
             </h3>
+            {question.type === "multiple-choice" && (
+              <p className="text-sm text-gray-400">Select all that apply</p>
+            )}
             {showValidation && errors[question.id] && (
               <div className="flex items-center gap-2 text-red-600 text-sm mt-2">
                 <AlertCircle className="w-4 h-4" />
@@ -272,35 +269,38 @@ export function SurveyForm({
             />
           )}
 
-          {/* Multiple Choice */}
+          {/* Multiple Choice — checkboxes, select many */}
           {question.type === "multiple-choice" && (
             <div className="space-y-3">
-              {(question.options || []).map((option) => (
-                <button
-                  key={option}
-                  onClick={() => updateResponse(option)}
-                  className={`w-full p-4 rounded-lg border-2 text-left transition-all ${
-                    responses[question.id] === option
-                      ? "border-orange-500 bg-orange-50"
-                      : "border-gray-200 hover:border-orange-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                        responses[question.id] === option
-                          ? "border-orange-500"
-                          : "border-gray-300"
-                      }`}
-                    >
-                      {responses[question.id] === option && (
-                        <div className="w-3 h-3 rounded-full bg-orange-500" />
-                      )}
+              {(question.options || []).map((option) => {
+                const isSelected = selectedOptions.includes(option);
+                return (
+                  <button
+                    key={option}
+                    onClick={() => toggleMultipleChoice(option)}
+                    className={`w-full p-4 rounded-lg border-2 text-left transition-all ${
+                      isSelected
+                        ? "border-orange-500 bg-orange-50"
+                        : "border-gray-200 hover:border-orange-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {/* Checkbox style instead of radio */}
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                        isSelected ? "border-orange-500 bg-orange-500" : "border-gray-300"
+                      }`}>
+                        {isSelected && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      <span>{option}</span>
                     </div>
-                    <span>{option}</span>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
+              {selectedOptions.length > 0 && (
+                <p className="text-xs text-orange-500 mt-2">
+                  {selectedOptions.length} selected
+                </p>
+              )}
             </div>
           )}
 
@@ -335,11 +335,7 @@ export function SurveyForm({
             </Button>
           )}
           <Button onClick={handleNext} className="flex-1 bg-orange-500 hover:bg-orange-600">
-            {currentQuestion === questions.length - 1 ? (
-              "Submit"
-            ) : (
-              <>Next <ArrowRight className="w-4 h-4 ml-2" /></>
-            )}
+            {currentQuestion === questions.length - 1 ? "Submit" : <>Next <ArrowRight className="w-4 h-4 ml-2" /></>}
           </Button>
         </div>
       </div>

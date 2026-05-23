@@ -3,29 +3,38 @@
 import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Download, Star, Loader2 } from "lucide-react";
-import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-} from "recharts";
+import { Download, Star, Loader2, AlertCircle, MessageSquare, ChevronRight } from "lucide-react";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 
-interface FeedbackItem {
-  id: string;
-  date: string;
-  rating: number;
-  surveyName: string;
-  comment: string;
-  sentiment: "positive" | "neutral" | "negative";
-}
-
 interface Survey {
   id: string;
   name: string;
+}
+
+interface Question {
+  id: string;
+  question: string;
+  type: string;
+  order_index: number;
+  options: string[];
+}
+
+interface ResponseRow {
+  id: string;
+  answers: Record<string, any>;
+  submitted_at: string;
+}
+
+interface FeedbackItem {
+  id: string;
+  date: string;
+  mainRating: number;
+  comment: string;
+  sentiment: "positive" | "neutral" | "negative";
 }
 
 function getSentiment(rating: number): "positive" | "neutral" | "negative" {
@@ -34,162 +43,189 @@ function getSentiment(rating: number): "positive" | "neutral" | "negative" {
   return "negative";
 }
 
-export function Feedback() {
+const COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#f97316", "#06b6d4"];
+
+interface FeedbackProps {
+  onViewReview?: () => void;
+}
+
+export function Feedback({ onViewReview }: FeedbackProps) {
   const { user } = useAuth();
   const supabase = createClient();
 
   const [loading, setLoading] = useState(true);
   const [surveys, setSurveys] = useState<Survey[]>([]);
-  const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
-  const [surveyFilter, setSurveyFilter] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [dateRange, setDateRange] = useState("7");
+  const [selectedSurveyId, setSelectedSurveyId] = useState<string>("");
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [responses, setResponses] = useState<ResponseRow[]>([]);
+  const [recentFeedback, setRecentFeedback] = useState<FeedbackItem[]>([]);
+  const [dateRange, setDateRange] = useState("30");
 
+  // Add this above the return statement
+  const renderLabel = ({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`;
+  const renderPercentLabel = ({ percent }: any) => `${(percent * 100).toFixed(0)}%`;
   useEffect(() => {
     if (!user) return;
-    fetchData();
-  }, [user, dateRange]);
+    fetchSurveys();
+  }, [user]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  useEffect(() => {
+    if (selectedSurveyId) fetchSurveyData();
+  }, [selectedSurveyId, dateRange]);
+
+  const fetchSurveys = async () => {
     try {
-      const { data: surveyData, error: surveyError } = await supabase
+      const { data, error } = await supabase
         .from("surveys")
         .select("id, title")
-        .eq("owner_id", user!.id);
+        .eq("owner_id", user!.id)
+        .order("created_at", { ascending: false });
 
-      if (surveyError) throw surveyError;
+      if (error) throw error;
+      const list = (data || []).map((s: any) => ({ id: s.id, name: s.title }));
+      setSurveys(list);
+      if (list.length > 0) setSelectedSurveyId(list[0].id);
+      else setLoading(false);
+    } catch (err: any) {
+      toast.error("Failed to load surveys");
+      setLoading(false);
+    }
+  };
 
-      const surveyList: Survey[] = (surveyData || []).map((s: any) => ({
-        id: s.id,
-        name: s.title,
-      }));
-      setSurveys(surveyList);
-
-      if (surveyList.length === 0) {
-        setFeedback([]);
-        setLoading(false);
-        return;
-      }
-
-      const surveyIds = surveyList.map((s) => s.id);
+  const fetchSurveyData = async () => {
+    setLoading(true);
+    try {
       const daysAgo = new Date();
       daysAgo.setDate(daysAgo.getDate() - parseInt(dateRange));
 
-      // Fetch responses and questions in parallel
-      const [{ data: responseData, error: responseError }, { data: questionsData }] = await Promise.all([
-        supabase
-          .from("survey_responses")
-          .select("id, survey_id, answers, submitted_at")
-          .in("survey_id", surveyIds)
-          .gte("submitted_at", daysAgo.toISOString())
-          .order("submitted_at", { ascending: false }),
+      const [{ data: qData }, { data: rData }] = await Promise.all([
         supabase
           .from("survey_questions")
-          .select("id, type")
-          .in("survey_id", surveyIds),
+          .select("id, question, type, order_index, options")
+          .eq("survey_id", selectedSurveyId)
+          .order("order_index", { ascending: true }),
+        supabase
+          .from("survey_responses")
+          .select("id, answers, submitted_at")
+          .eq("survey_id", selectedSurveyId)
+          .gte("submitted_at", daysAgo.toISOString())
+          .order("submitted_at", { ascending: false }),
       ]);
 
-      if (responseError) throw responseError;
+      setQuestions((qData || []).map((q: any) => ({
+        id: q.id,
+        question: q.question,
+        type: q.type,
+        order_index: q.order_index,
+        options: Array.isArray(q.options) ? q.options : [],
+      })));
 
-      // Map question id → type so we know which answers are text
-      const questionTypeMap = Object.fromEntries(
-        (questionsData || []).map((q: any) => [q.id, q.type])
-      );
+      setResponses(rData || []);
 
-      const surveyMap = Object.fromEntries(surveyList.map((s) => [s.id, s.name]));
+      // Build recent feedback items
+      const firstRatingQ = (qData || []).find((q: any) => q.type === "rating");
+      const textQIds = (qData || []).filter((q: any) => q.type === "text").map((q: any) => q.id);
 
-      const mapped: FeedbackItem[] = (responseData || []).map((r: any) => {
+      const recent: FeedbackItem[] = (rData || []).slice(0, 10).map((r: any) => {
         const answers = r.answers || {};
-
-        // Average ALL numeric values between 1-5 (rating questions)
-        const ratingValues = Object.values(answers).filter(
-          (v: any) => typeof v === "number" && v >= 1 && v <= 5
-        ) as number[];
-        const rating = ratingValues.length > 0
-          ? Math.round(ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length)
+        const mainRating = firstRatingQ
+          ? (typeof answers[firstRatingQ.id] === "number" ? answers[firstRatingQ.id] : 3)
           : 3;
-
-        // Only get answers from "text" type questions as comment
-        const comment = Object.entries(answers)
-          .filter(([key]) => questionTypeMap[key] === "text")
-          .map(([, value]) => typeof value === "string" ? value.trim() : "")
-          .filter(v => v.length > 0)
+        const comment = textQIds
+          .map((qid: string) => typeof answers[qid] === "string" ? answers[qid].trim() : "")
+          .filter((v: string) => v.length > 0)
           .join(" • ");
 
         return {
           id: r.id,
           date: r.submitted_at?.split("T")[0] || "",
-          rating,
-          surveyName: surveyMap[r.survey_id] || "Unknown Survey",
+          mainRating,
           comment,
-          sentiment: getSentiment(rating),
+          sentiment: getSentiment(mainRating),
         };
       });
 
-      setFeedback(mapped);
+      setRecentFeedback(recent);
     } catch (err: any) {
-      toast.error("Failed to load feedback: " + err.message);
+      toast.error("Failed to load data: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredFeedback = feedback.filter((item) => {
-    const matchesSurvey = surveyFilter === "all" || item.surveyName === surveyFilter;
-    const matchesSearch = item.comment.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSurvey && matchesSearch;
-  });
-
-  const trendData = (() => {
-    const grouped: Record<string, { ratings: number[]; count: number }> = {};
-    feedback.forEach((item) => {
-      if (!grouped[item.date]) grouped[item.date] = { ratings: [], count: 0 };
-      grouped[item.date].ratings.push(item.rating);
-      grouped[item.date].count++;
-    });
-    return Object.entries(grouped)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-7)
-      .map(([date, { ratings, count }]) => ({
-        date,
-        rating: parseFloat((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1)),
-        responses: count,
-      }));
-  })();
-
-  const sentimentCounts = { positive: 0, neutral: 0, negative: 0 };
-  feedback.forEach((f) => sentimentCounts[f.sentiment]++);
-  const total = feedback.length || 1;
-  const sentimentData = [
-    { name: "Positive", value: Math.round((sentimentCounts.positive / total) * 100), color: "#22c55e" },
-    { name: "Neutral", value: Math.round((sentimentCounts.neutral / total) * 100), color: "#f59e0b" },
-    { name: "Negative", value: Math.round((sentimentCounts.negative / total) * 100), color: "#ef4444" },
-  ];
-
-  const categoryBreakdown = surveys.map((s) => ({
-    category: s.name,
-    count: feedback.filter((f) => f.surveyName === s.name).length,
-  }));
-
-  const avgRating = feedback.length
-    ? (feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length).toFixed(1)
-    : "—";
-
   const handleExportCSV = () => {
-    const rows = [
-      ["Date", "Survey", "Rating", "Sentiment", "Comment"],
-      ...filteredFeedback.map((f) => [f.date, f.surveyName, f.rating, f.sentiment, `"${f.comment}"`]),
-    ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
+    if (responses.length === 0) { toast.error("No data to export"); return; }
+    const headers = ["Submitted At", ...questions.map(q => q.question)];
+    const rows = responses.map(r => [
+      r.submitted_at?.split("T")[0] || "",
+      ...questions.map(q => {
+        const a = r.answers[q.id];
+        return a !== undefined ? `"${String(a).replace(/"/g, "'")}"` : "";
+      })
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "feedback-export.csv";
+    a.download = `feedback-${selectedSurveyId}.csv`;
     a.click();
-    toast.success("CSV exported");
+    toast.success("CSV exported!");
   };
+
+  // Build chart data for each question
+  const getChartData = (question: Question) => {
+    const answers = responses.map(r => r.answers[question.id]).filter(a => a !== undefined && a !== null && a !== "");
+
+    if (question.type === "rating") {
+      const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      answers.forEach(a => {
+        const n = typeof a === "number" ? a : parseInt(a);
+        if (n >= 1 && n <= 5) counts[n]++;
+      });
+      return Object.entries(counts).map(([rating, count]) => ({ name: `${rating} ⭐`, value: count }));
+    }
+
+    if (question.type === "yes-no") {
+      const counts: Record<string, number> = { Yes: 0, No: 0 };
+      answers.forEach(a => {
+        const s = String(a);
+        if (s === "Yes") counts.Yes++;
+        else if (s === "No") counts.No++;
+      });
+      return [
+        { name: "Yes", value: counts.Yes },
+        { name: "No", value: counts.No },
+      ];
+    }
+
+    if (question.type === "multiple-choice") {
+      const counts: Record<string, number> = {};
+      answers.forEach(a => {
+        const s = String(a);
+        counts[s] = (counts[s] || 0) + 1;
+      });
+      return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    }
+
+    return [];
+  };
+
+  const getAvgRating = (question: Question) => {
+    const answers = responses
+      .map(r => r.answers[question.id])
+      .filter(a => typeof a === "number" && a >= 1 && a <= 5) as number[];
+    if (answers.length === 0) return 0;
+    return parseFloat((answers.reduce((a, b) => a + b, 0) / answers.length).toFixed(1));
+  };
+
+  const getTextAnswers = (question: Question) => {
+    return responses
+      .map(r => r.answers[question.id])
+      .filter(a => typeof a === "string" && a.trim().length > 0) as string[];
+  };
+
+  const selectedSurvey = surveys.find(s => s.id === selectedSurveyId);
 
   return (
     <div className="p-4 lg:p-8 space-y-6">
@@ -197,7 +233,7 @@ export function Feedback() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl mb-1">Feedback & Analytics</h2>
-          <p className="text-gray-600">Real-time insights from customer feedback</p>
+          <p className="text-gray-600">Question-by-question breakdown of responses</p>
         </div>
         <Button variant="outline" onClick={handleExportCSV}>
           <Download className="w-4 h-4 mr-2" />
@@ -205,165 +241,213 @@ export function Feedback() {
         </Button>
       </div>
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-3xl mb-1">{feedback.length}</div>
-            <div className="text-sm text-gray-500">Total Responses</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-3xl mb-1">{avgRating}</div>
-            <div className="text-sm text-gray-500">Avg Rating</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-3xl mb-1">{sentimentCounts.positive}</div>
-            <div className="text-sm text-gray-500">Positive</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-3xl mb-1">{surveys.length}</div>
-            <div className="text-sm text-gray-500">Active Surveys</div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Survey + Date filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Select value={selectedSurveyId} onValueChange={setSelectedSurveyId}>
+          <SelectTrigger className="w-full sm:w-72">
+            <SelectValue placeholder="Select survey" />
+          </SelectTrigger>
+          <SelectContent>
+            {surveys.map(s => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm">Date Range</label>
-              <Select value={dateRange} onValueChange={setDateRange}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">Last 7 days</SelectItem>
-                  <SelectItem value="30">Last 30 days</SelectItem>
-                  <SelectItem value="90">Last 90 days</SelectItem>
-                  <SelectItem value="365">Last year</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm">Survey</label>
-              <Select value={surveyFilter} onValueChange={setSurveyFilter}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Surveys</SelectItem>
-                  {surveys.map((s) => (
-                    <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm">Search</label>
-              <Input
-                placeholder="Search feedback..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        <Select value={dateRange} onValueChange={setDateRange}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">Last 7 days</SelectItem>
+            <SelectItem value="30">Last 30 days</SelectItem>
+            <SelectItem value="90">Last 90 days</SelectItem>
+            <SelectItem value="365">Last year</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
         </div>
-      ) : feedback.length === 0 ? (
+      ) : surveys.length === 0 ? (
         <div className="text-center py-20 text-gray-500">
-          <p className="text-lg mb-2">No feedback yet</p>
-          <p className="text-sm">Share your survey QR codes to start collecting responses</p>
+          <p>No surveys yet. Create one first!</p>
+        </div>
+      ) : responses.length === 0 ? (
+        <div className="text-center py-20 text-gray-500">
+          <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <p className="text-lg mb-1">No responses yet</p>
+          <p className="text-sm">Share your survey QR code to start collecting feedback</p>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader><CardTitle>Rating Trend</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis domain={[0, 5]} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="rating" stroke="#f97316" strokeWidth={2} name="Avg Rating" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle>Sentiment Distribution</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={sentimentData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={(entry) => `${entry.name}: ${entry.value}%`}
-                      outerRadius={100}
-                      dataKey="value"
-                    >
-                      {sentimentData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle>Response Volume</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="responses" fill="#f97316" name="Responses" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle>Feedback by Survey</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={categoryBreakdown} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="category" type="category" width={120} />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#f97316" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+          {/* Summary bar */}
+          <div className="bg-white border rounded-xl p-4 flex flex-wrap gap-6 text-sm">
+            <div>
+              <span className="text-gray-500">Survey: </span>
+              <span className="font-medium">{selectedSurvey?.name}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Total responses: </span>
+              <span className="font-medium">{responses.length}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Questions: </span>
+              <span className="font-medium">{questions.length}</span>
+            </div>
           </div>
 
+          {/* Per-question cards */}
+          <div className="space-y-6">
+            {questions.map((question, idx) => {
+              const chartData = getChartData(question);
+              const totalAnswered = responses.filter(r =>
+                r.answers[question.id] !== undefined && r.answers[question.id] !== null && r.answers[question.id] !== ""
+              ).length;
+
+              return (
+                <Card key={question.id}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">Question {idx + 1} · {question.type}</p>
+                        <CardTitle className="text-lg font-medium">{question.question}</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">{totalAnswered} responses</p>
+                      </div>
+                      {question.type === "rating" && (
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-3xl font-medium text-orange-500">{getAvgRating(question)}</div>
+                          <div className="flex gap-0.5 justify-end mt-1">
+                            {[1,2,3,4,5].map(i => (
+                              <Star key={i} className={`w-4 h-4 ${i <= Math.round(getAvgRating(question)) ? "text-yellow-500 fill-yellow-500" : "text-gray-300"}`} />
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">avg rating</p>
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Rating — bar chart */}
+                    {question.type === "rating" && chartData.length > 0 && (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={chartData} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" allowDecimals={false} />
+                          <YAxis dataKey="name" type="category" width={50} />
+                          <Tooltip formatter={(val) => [`${val} responses`]} />
+                          <Bar dataKey="value" fill="#f97316" radius={[0, 4, 4, 0]} name="Responses" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+
+                    {/* Yes/No — pie chart */}
+                    {question.type === "yes-no" && (
+                      <div className="flex items-center gap-8">
+                        <ResponsiveContainer width={220} height={220}>
+                          <PieChart>
+                            <Pie
+                              data={chartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={50}
+                              outerRadius={90}
+                              dataKey="value"
+                              label={renderLabel}
+                              labelLine={false}
+                            >
+                              {chartData.map((_, i) => (
+                                <Cell key={i} fill={i === 0 ? "#3b82f6" : "#ef4444"} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(val) => [`${val} responses`]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="space-y-2">
+                          {chartData.map((d, i) => (
+                            <div key={d.name} className="flex items-center gap-2 text-sm">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: i === 0 ? "#3b82f6" : "#ef4444" }} />
+                              <span className="font-medium">{d.name}</span>
+                              <span className="text-gray-500">— {d.value} ({totalAnswered > 0 ? Math.round(d.value / totalAnswered * 100) : 0}%)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Multiple choice — pie chart */}
+                    {question.type === "multiple-choice" && chartData.length > 0 && (
+                      <div className="flex flex-col lg:flex-row items-start gap-8">
+                        <ResponsiveContainer width={220} height={220}>
+                          <PieChart>
+                            <Pie
+                              data={chartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={50}
+                              outerRadius={90}
+                              dataKey="value"
+                              labelLine={false}
+                              label={renderPercentLabel}
+                            >
+                              {chartData.map((_, i) => (
+                                <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(val) => [`${val} responses`]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="space-y-2 flex-1">
+                          {chartData.map((d, i) => (
+                            <div key={d.name} className="flex items-center gap-3">
+                              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                              <span className="text-sm flex-1">{d.name}</span>
+                              <span className="text-sm font-medium">{d.value}</span>
+                              <span className="text-xs text-gray-400">({totalAnswered > 0 ? Math.round(d.value / totalAnswered * 100) : 0}%)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Text — list of answers */}
+                    {question.type === "text" && (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {getTextAnswers(question).length === 0 ? (
+                          <p className="text-gray-400 italic text-sm">No text responses yet</p>
+                        ) : (
+                          getTextAnswers(question).map((answer, i) => (
+                            <div key={i} className="p-3 bg-gray-50 rounded-lg border text-sm text-gray-700">
+                              "{answer}"
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Recent responses with caution for bad ones */}
           <Card>
-            <CardHeader><CardTitle>Recent Feedback</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Recent Responses</CardTitle>
+            </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {filteredFeedback.map((item) => (
+                {recentFeedback.map(item => (
                   <div
                     key={item.id}
-                    className="flex items-start gap-4 p-4 border rounded-lg hover:border-orange-300 transition-colors"
+                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${
+                      item.sentiment === "negative"
+                        ? "border-red-200 bg-red-50 hover:border-red-400 cursor-pointer"
+                        : "hover:border-orange-300"
+                    }`}
+                    onClick={item.sentiment === "negative" && onViewReview ? onViewReview : undefined}
                   >
                     <div className={`
                       w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
@@ -374,36 +458,31 @@ export function Feedback() {
                        item.sentiment === "negative" ? "😞" : "😐"}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <div className="flex gap-0.5">
                           {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`w-4 h-4 ${
-                                i < item.rating
-                                  ? "text-yellow-500 fill-yellow-500"
-                                  : "text-gray-300"
-                              }`}
-                            />
+                            <Star key={i} className={`w-4 h-4 ${i < item.mainRating ? "text-yellow-500 fill-yellow-500" : "text-gray-300"}`} />
                           ))}
                         </div>
                         <span className="text-sm text-gray-500">{item.date}</span>
-                        <span className="text-sm text-gray-500">•</span>
-                        <span className="text-sm text-gray-500">{item.surveyName}</span>
+                        {item.sentiment === "negative" && (
+                          <span className="flex items-center gap-1 text-xs text-red-600 bg-red-100 px-2 py-0.5 rounded-full">
+                            <AlertCircle className="w-3 h-3" />
+                            Needs attention
+                          </span>
+                        )}
                       </div>
                       {item.comment ? (
-                        <p className="text-gray-700">{item.comment}</p>
+                        <p className="text-gray-700 text-sm">{item.comment}</p>
                       ) : (
-                        <p className="text-gray-400 italic text-sm">No comment provided</p>
+                        <p className="text-gray-400 italic text-sm">No comment</p>
                       )}
                     </div>
+                    {item.sentiment === "negative" && onViewReview && (
+                      <ChevronRight className="w-5 h-5 text-red-400 flex-shrink-0 mt-1" />
+                    )}
                   </div>
                 ))}
-                {filteredFeedback.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    No feedback matches your filters
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
