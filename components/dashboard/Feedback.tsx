@@ -432,60 +432,7 @@ export function Feedback({ onViewReview }: FeedbackProps) {
             })}
           </div>
 
-          {/* Recent responses with caution for bad ones */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Responses</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {recentFeedback.map(item => (
-                  <div
-                    key={item.id}
-                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${
-                      item.sentiment === "negative"
-                        ? "border-red-200 bg-red-50 hover:border-red-400 cursor-pointer"
-                        : "hover:border-orange-300"
-                    }`}
-                    onClick={item.sentiment === "negative" && onViewReview ? onViewReview : undefined}
-                  >
-                    <div className={`
-                      w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
-                      ${item.sentiment === "positive" ? "bg-green-100" :
-                        item.sentiment === "negative" ? "bg-red-100" : "bg-gray-100"}
-                    `}>
-                      {item.sentiment === "positive" ? "😊" :
-                       item.sentiment === "negative" ? "😞" : "😐"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <div className="flex gap-0.5">
-                          {[...Array(5)].map((_, i) => (
-                            <Star key={i} className={`w-4 h-4 ${i < item.mainRating ? "text-yellow-500 fill-yellow-500" : "text-gray-300"}`} />
-                          ))}
-                        </div>
-                        <span className="text-sm text-gray-500">{item.date}</span>
-                        {item.sentiment === "negative" && (
-                          <span className="flex items-center gap-1 text-xs text-red-600 bg-red-100 px-2 py-0.5 rounded-full">
-                            <AlertCircle className="w-3 h-3" />
-                            Needs attention
-                          </span>
-                        )}
-                      </div>
-                      {item.comment ? (
-                        <p className="text-gray-700 text-sm">{item.comment}</p>
-                      ) : (
-                        <p className="text-gray-400 italic text-sm">No comment</p>
-                      )}
-                    </div>
-                    {item.sentiment === "negative" && onViewReview && (
-                      <ChevronRight className="w-5 h-5 text-red-400 flex-shrink-0 mt-1" />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          
         </>
       )}
     </div>

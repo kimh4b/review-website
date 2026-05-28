@@ -28,7 +28,7 @@ export default function AppContent() {
             <Footer />
 
             <Link
-                href="/survey"
+                href="/demo-survey"
                 className="fixed bottom-6 right-6 bg-orange-500 text-white px-4 py-3 rounded-full shadow-lg hover:bg-orange-600 transition-all z-50 flex items-center gap-2"
             >
                 <TabletSmartphone />

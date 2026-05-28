@@ -26,6 +26,33 @@ export function QRGenerator() {
   const [brandColor, setBrandColor] = useState("#f97316");
   const [size, setSize] = useState<"200" | "300" | "400">("300");
   const [copied, setCopied] = useState(false);
+  const [scanCount, setScanCount] = useState(0); 
+  const [responsesCount, setResponsesCount] = useState(0);
+
+   useEffect(() => {
+  if (selectedSurveyId) {
+    fetchScanCount();
+    fetchResponsesCount();
+  }
+}, [selectedSurveyId]);
+
+  const fetchScanCount = async () => {
+    const { count } = await supabase
+      .from("qr_scans")
+      .select("*", { count: "exact", head: true })
+      .eq("survey_id", selectedSurveyId);
+
+    setScanCount(count || 0);
+  };
+
+  const fetchResponsesCount = async () => {
+  const { count } = await supabase
+    .from("survey_responses")
+    .select("*", { count: "exact", head: true })
+    .eq("survey_id", selectedSurveyId);
+
+  setResponsesCount(count || 0);
+};
 
   useEffect(() => {
     if (!user) return;
@@ -58,7 +85,7 @@ export function QRGenerator() {
   };
 
   const surveyUrl = selectedSurveyId
-    ? `${window.location.origin}/survey/${selectedSurveyId}`
+    ? `${window.location.origin}/qr/${selectedSurveyId}`
     : "";
 
   // Use goqr.me free API to generate a real QR code
@@ -206,16 +233,41 @@ export function QRGenerator() {
                   )}
                 </div>
 
-                <div className="space-y-3">
-                  <Button
-                    onClick={handleDownloadPNG}
-                    className="w-full bg-orange-500 hover:bg-orange-600"
-                    disabled={!qrImageUrl}
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download QR Code (PNG)
-                  </Button>
-                </div>
+                {/* QR Stats */}
+<div className="grid grid-cols-2 gap-4">
+  <Card className="border-orange-100 shadow-none">
+    <CardContent className="pt-6">
+      <div className="text-3xl font-bold text-orange-500">
+        {scanCount}
+      </div>
+      <p className="text-sm text-gray-500 mt-1">
+        Total Scans
+      </p>
+    </CardContent>
+  </Card>
+
+  <Card className="border-green-100 shadow-none">
+    <CardContent className="pt-6">
+      <div className="text-3xl font-bold text-green-500">
+        {responsesCount}
+      </div>
+      <p className="text-sm text-gray-500 mt-1">
+        Responses
+      </p>
+    </CardContent>
+  </Card>
+</div>
+
+<div className="space-y-3">
+  <Button
+    onClick={handleDownloadPNG}
+    className="w-full bg-orange-500 hover:bg-orange-600"
+    disabled={!qrImageUrl}
+  >
+    <Download className="w-4 h-4 mr-2" />
+    Download QR Code (PNG)
+  </Button>
+</div>
 
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                   <h4 className="text-sm mb-2">Tips for best results:</h4>

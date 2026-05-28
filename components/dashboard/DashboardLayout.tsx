@@ -25,11 +25,12 @@ const navigation = [
   { id: "settings" as Page, name: "Settings", icon: Settings },
 ];
 
+
 export function DashboardLayout() {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<"negative" | undefined>(undefined);
-
+  const [reviewId, setReviewId] = useState<string | undefined>(undefined);
   const [currentPage, setCurrentPageState] = useState<Page>(() => {
     if (typeof window !== "undefined") {
       return (localStorage.getItem("dashboardPage") as Page) || "dashboard";
@@ -42,8 +43,9 @@ export function DashboardLayout() {
     setCurrentPageState(page);
   };
 
-  const handleNeedsAttention = () => {
+  const handleNeedsAttention = (id?: string) => {
     setReviewFilter("negative");
+    setReviewId(id);
     setCurrentPage("reviews");
   };
 
@@ -58,7 +60,7 @@ export function DashboardLayout() {
       case "feedback":
         return <Feedback onViewReview={handleNeedsAttention} />;
       case "reviews":
-        return <Reviews defaultFilter={reviewFilter} />;
+  return <Reviews defaultFilter={reviewFilter} expandReviewId={reviewId} />;
       case "settings":
         return <AccountSettings />;
       default:

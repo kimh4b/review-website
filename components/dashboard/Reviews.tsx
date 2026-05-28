@@ -48,9 +48,10 @@ function timeAgo(dateStr: string): string {
 
 interface ReviewsProps {
   defaultFilter?: "negative";
+  expandReviewId?: string;
 }
 
-export function Reviews({ defaultFilter }: ReviewsProps) {
+export function Reviews({ defaultFilter, expandReviewId }: ReviewsProps) {
   const { user } = useAuth();
   const supabase = createClient();
 
@@ -70,6 +71,26 @@ export function Reviews({ defaultFilter }: ReviewsProps) {
   useEffect(() => {
     fetchReviews();
   }, [selectedSurveyId, surveys]);
+
+  useEffect(() => {
+  if (expandReviewId && reviews.length > 0) {
+    setExpandedId(expandReviewId);
+    setSentimentFilter("all");
+
+    // Wait for render before scrolling
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        document
+          .getElementById(`review-${expandReviewId}`)
+          ?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "nearest",
+          });
+      }, 100);
+    });
+  }
+}, [expandReviewId, reviews]);
 
   const fetchSurveys = async () => {
     try {
@@ -288,6 +309,7 @@ export function Reviews({ defaultFilter }: ReviewsProps) {
             return (
               <Card
                 key={review.id}
+                id={`review-${review.id}`}
                 className={`border-l-4 transition-shadow hover:shadow-md ${
                   review.sentiment === "positive" ? "border-l-green-400" :
                   review.sentiment === "negative" ? "border-l-red-400" :
@@ -341,36 +363,73 @@ export function Reviews({ defaultFilter }: ReviewsProps) {
                   </div>
 
                   {/* Expanded — ALL questions and answers */}
-                  {isExpanded && (
-                    <div className="mt-4 pt-4 border-t space-y-5">
-                      <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Full Response</p>
-                      {surveyQuestions.map((q, idx) => {
-                        const answer = review.answers[q.id];
-                        return (
-                          <div key={q.id} className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-400 font-medium">Q{idx + 1}</span>
-                              <p className="text-sm font-medium text-gray-800">{q.question}</p>
-                              <span className={`text-xs px-2 py-0.5 rounded-full ml-auto flex-shrink-0 ${
-                                q.type === "rating" ? "bg-yellow-50 text-yellow-700" :
-                                q.type === "text" ? "bg-blue-50 text-blue-700" :
-                                q.type === "yes-no" ? "bg-green-50 text-green-700" :
-                                "bg-purple-50 text-purple-700"
-                              }`}>
-                                {q.type}
-                              </span>
-                            </div>
-                            <div className="pl-6">
-                              {getAnswerDisplay(q, answer)}
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <p className="text-xs text-gray-400 pt-2 border-t">
-                        Submitted: {new Date(review.submitted_at).toLocaleString()}
-                      </p>
-                    </div>
-                  )}
+                  <div
+  className={`
+    overflow-hidden transition-all duration-500 ease-in-out
+    ${
+      isExpanded
+        ? "max-h-[2000px] opacity-100 mt-4 pt-4 border-t"
+        : "max-h-0 opacity-0"
+    }
+  `}
+>
+  <div className="space-y-5">
+    <div className="flex items-center justify-between">
+      <p className="text-xs text-gray-400 uppercase tracking-[0.2em] font-semibold">
+        Full Response
+      </p>
+
+      <span className="text-xs text-gray-400">
+        submited at {new Date(review.submitted_at).toLocaleString()}
+      </span>
+    </div>
+
+    {surveyQuestions.map((q, idx) => {
+      const answer = review.answers[q.id];
+
+      return (
+        <div
+          key={q.id}
+          className="rounded-xl border bg-white p-4 shadow-sm"
+        >
+          {/* Question Header */}
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+              {idx + 1}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-gray-800">
+                  {q.question}
+                </p>
+
+                <span
+                  className={`text-[11px] px-2 py-1 rounded-full font-medium ${
+                    q.type === "rating"
+                      ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                      : q.type === "text"
+                      ? "bg-blue-50 text-blue-700 border border-blue-200"
+                      : q.type === "yes-no"
+                      ? "bg-green-50 text-green-700 border border-green-200"
+                      : "bg-purple-50 text-purple-700 border border-purple-200"
+                  }`}
+                >
+                  {q.type}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Answer */}
+          <div className="pl-10">
+            {getAnswerDisplay(q, answer)}
+          </div>
+        </div>
+      );
+    })}
+  </div>
+</div>
                 </CardContent>
               </Card>
             );

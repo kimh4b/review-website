@@ -27,6 +27,7 @@ interface SurveyFormProps {
   initialResponses: Record<string, any>;
   onSubmit: (data: Record<string, any>) => void;
   onUpdate: (data: Record<string, any>) => void;
+  isDemo?: boolean;
 }
 
 export function SurveyForm({
@@ -34,6 +35,7 @@ export function SurveyForm({
   initialResponses,
   onSubmit,
   onUpdate,
+  isDemo,
 }: SurveyFormProps) {
   const supabase = createClient();
 
@@ -45,45 +47,87 @@ export function SurveyForm({
   const [showValidation, setShowValidation] = useState(false);
 
   useEffect(() => {
-    if (!surveyData.surveyId) return;
-    fetchQuestions();
-  }, [surveyData.surveyId]);
+  if (!surveyData.surveyId) return;
+
+  if (isDemo) {
+    setQuestions([
+      {
+        id: "rating1",
+        type: "rating",
+        question: "How was your experience?",
+        required: true,
+        order_index: 0,
+      },
+      {
+        id: "text1",
+        type: "text",
+        question: "What can we improve?",
+        required: false,
+        order_index: 1,
+      },
+      {
+        id: "yesno1",
+        type: "yes-no",
+        question: "Would you come again?",
+        required: true,
+        order_index: 2,
+      },
+      {
+        id: "mc1",
+        type: "multiple-choice",
+        question: "What did you like most?",
+        required: false,
+        order_index: 3,
+        options: ["Food", "Service", "Price", "Atmosphere"],
+      },
+    ]);
+
+    setLoading(false);
+    return;
+  }
+
+  fetchQuestions();
+}, [surveyData.surveyId, isDemo]);
 
   const fetchQuestions = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("survey_questions")
-        .select("*")
-        .eq("survey_id", surveyData.surveyId)
-        .order("order_index", { ascending: true });
+  if (isDemo) return;
 
-      if (error) throw error;
+  setLoading(true);
+  try {
+    const { data, error } = await supabase
+      .from("survey_questions")
+      .select("*")
+      .eq("survey_id", surveyData.surveyId)
+      .order("order_index", { ascending: true });
 
-      if (!data || data.length === 0) {
-        setQuestions([
-          { id: "overall", type: "rating", question: "How would you rate your overall experience?", required: true, order_index: 0 },
-          { id: "comment", type: "text", question: "Any additional comments?", required: false, order_index: 1 },
-        ]);
-      } else {
-        setQuestions(data.map((q: any) => ({
-          id: q.id,
-          type: q.type as Question["type"],
-          question: q.question,
-          required: q.required ?? false,
-          options: q.options || [],
-          order_index: q.order_index,
-        })));
-      }
-    } catch (err: any) {
-      toast.error("Failed to load questions");
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
       setQuestions([
-        { id: "overall", type: "rating", question: "How would you rate your overall experience?", required: true, order_index: 0 },
+        {
+          id: "overall",
+          type: "rating",
+          question: "How would you rate your overall experience?",
+          required: true,
+          order_index: 0,
+        },
       ]);
-    } finally {
-      setLoading(false);
+    } else {
+      setQuestions(data.map((q: any) => ({
+        id: q.id,
+        type: q.type,
+        question: q.question,
+        required: q.required ?? false,
+        options: q.options || [],
+        order_index: q.order_index,
+      })));
     }
-  };
+  } catch (err: any) {
+    toast.error("Failed to load questions");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const question = questions[currentQuestion];
   const progress = questions.length > 0 ? ((currentQuestion + 1) / questions.length) * 100 : 0;
@@ -133,25 +177,33 @@ export function SurveyForm({
   };
 
   const handleSubmit = () => {
-    const newErrors: Record<string, string> = {};
-    questions.forEach((q) => {
-      if (q.required && !hasAnswer(q)) {
-        newErrors[q.id] = "This field is required";
-      }
-    });
+  const newErrors: Record<string, string> = {};
 
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      toast.error("Please answer all required questions");
-      const firstErrorIndex = questions.findIndex((q) => newErrors[q.id]);
-      setCurrentQuestion(firstErrorIndex);
-      setShowValidation(true);
-      return;
+  questions.forEach((q) => {
+    if (q.required && !hasAnswer(q)) {
+      newErrors[q.id] = "This field is required";
     }
+  });
 
-    onSubmit(responses);
-  };
+  if (Object.keys(newErrors).length > 0) {
+    setErrors(newErrors);
+    toast.error("Please answer all required questions");
+    const firstErrorIndex = questions.findIndex((q) => newErrors[q.id]);
+    setCurrentQuestion(firstErrorIndex);
+    setShowValidation(true);
+    return;
+  }
 
+  // 🔥 DEMO MODE = NO SAVE
+  if (isDemo) {
+    toast.success("Demo completed! No data was saved.");
+    onSubmit(responses); // just simulate
+    return;
+  }
+
+  // REAL MODE
+  onSubmit(responses);
+};
   const updateResponse = (value: any) => {
     if (!question) return;
     const updated = { ...responses, [question.id]: value };
