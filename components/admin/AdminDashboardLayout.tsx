@@ -33,18 +33,18 @@ const navigation = [
     icon: Store,
     description: "Manage accounts",
   },
-  {
-    id: "analytics" as Page,
-    name: "Analytics",
-    icon: BarChart3,
-    description: "Charts & insights",
-  },
-  {
-    id: "reviews" as Page,
-    name: "Reviews",
-    icon: MessageSquare,
-    description: "Raw feedback",
-  },
+  // {
+  //   id: "analytics" as Page,
+  //   name: "Analytics",
+  //   icon: BarChart3,
+  //   description: "Charts & insights",
+  // },
+  // {
+  //   id: "reviews" as Page,
+  //   name: "Reviews",
+  //   icon: MessageSquare,
+  //   description: "Raw feedback",
+  // },
   {
     id: "settings" as Page,
     name: "Settings",
