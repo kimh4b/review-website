@@ -4,8 +4,9 @@ import { useState } from "react";
 import { Button } from "../ui/button";
 import { 
   LayoutDashboard, FileText, QrCode, BarChart3,
-  Settings, LogOut, Menu, X, Star, MessageSquare
+  Settings, LogOut, Menu, X, Star, MessageSquare, Building2
 } from "lucide-react";
+
 import { useAuth } from "../../contexts/AuthContext";
 import { DashboardHome } from "./DashboardHome";
 import { Surveys } from "./Surveys";
@@ -13,11 +14,13 @@ import { QRGenerator } from "./QRGenerator";
 import { Feedback } from "./Feedback";
 import { AccountSettings } from "./AccountSettings";
 import { Reviews } from "./Reviews";
+import { Branches } from "./Branches";
 
-type Page = "dashboard" | "surveys" | "qr" | "feedback" | "reviews" | "settings";
+type Page = "dashboard" | "surveys" | "qr" | "feedback" | "reviews" | "settings" | "branches";
 
 const navigation = [
-  { id: "dashboard" as Page, name: "Dashboard", icon: LayoutDashboard },
+  { id: "dashboard" as Page, name: "Home", icon: LayoutDashboard },
+  { id: "branches" as Page, name: "Branches", icon: Building2 },
   { id: "surveys" as Page, name: "Surveys", icon: FileText },
   { id: "qr" as Page, name: "QR Codes", icon: QrCode },
   { id: "feedback" as Page, name: "Feedback & Analytics", icon: BarChart3 },
@@ -31,6 +34,7 @@ export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<"negative" | undefined>(undefined);
   const [reviewId, setReviewId] = useState<string | undefined>(undefined);
+  const [feedbackBranchId, setFeedbackBranchId] = useState<string | undefined>(undefined);
   const [currentPage, setCurrentPageState] = useState<Page>(() => {
     if (typeof window !== "undefined") {
       return (localStorage.getItem("dashboardPage") as Page) || "dashboard";
@@ -49,16 +53,25 @@ export function DashboardLayout() {
     setCurrentPage("reviews");
   };
 
+  const handleBranchSelect = (branchId: string) => {
+    setFeedbackBranchId(branchId);
+    setReviewFilter(undefined);
+    setReviewId(undefined);
+    setCurrentPage("feedback");
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case "dashboard":
         return <DashboardHome onNeedsAttention={handleNeedsAttention} />;
+      case "branches":
+        return <Branches onSelectBranch={handleBranchSelect} />;
       case "surveys":
         return <Surveys />;
       case "qr":
         return <QRGenerator />;
       case "feedback":
-        return <Feedback onViewReview={handleNeedsAttention} />;
+        return <Feedback onViewReview={handleNeedsAttention} defaultBranchId={feedbackBranchId} />;
       case "reviews":
   return <Reviews defaultFilter={reviewFilter} expandReviewId={reviewId} />;
       case "settings":

@@ -37,7 +37,6 @@ export function Footer() {
             <h3 className="text-white mb-4">Product</h3>
             <ul className="space-y-2 text-sm">
               <li><a href="#features" className="hover:text-white">Features</a></li>
-              <li><a href="#pricing" className="hover:text-white">Pricing</a></li>
               <li><a href="#" className="hover:text-white">Integrations</a></li>
               <li><a href="#" className="hover:text-white">API</a></li>
               <li><a href="#" className="hover:text-white">Mobile App</a></li>

@@ -9,11 +9,12 @@ interface Question {
 
 interface SurveyIntroProps {
   restaurantName: string;
+  branchName?: string;
   questions: Question[];
   onStart: () => void;
 }
 
-export function SurveyIntro({ restaurantName, questions, onStart }: SurveyIntroProps) {
+export function SurveyIntro({ restaurantName, branchName, questions, onStart }: SurveyIntroProps) {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-orange-50 to-amber-50">
       <div className="w-full max-w-md">
@@ -23,6 +24,9 @@ export function SurveyIntro({ restaurantName, questions, onStart }: SurveyIntroP
             <Star className="w-9 h-9 text-white fill-white" />
           </div>
           <h1 className="text-3xl mb-2">{restaurantName}</h1>
+          {branchName ? (
+            <p className="text-sm text-gray-500 mb-2">Branch: {branchName}</p>
+          ) : null}
           <p className="text-gray-600">We'd love your feedback!</p>
         </div>
 

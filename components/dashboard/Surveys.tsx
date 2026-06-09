@@ -12,21 +12,23 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Survey {
   id: string;
   name: string;
   description: string;
   responses: number;
-  status: "active" | "draft" | "archived";
+  status: "active" | "draft" | "closed";
   createdAt: string;
+  branchId?: string;
+  branchName?: string;
 }
 
 export function Surveys() {
   const { user } = useAuth();
-  const supabase = createClient();
+
 
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +51,8 @@ export function Surveys() {
           description,
           status,
           created_at,
+          branch_id,
+          branches(id, name),
           survey_responses (count)
         `)
         .eq("owner_id", user!.id)
@@ -56,14 +60,25 @@ export function Surveys() {
 
       if (error) throw error;
 
-      const mapped: Survey[] = (data || []).map((s: any) => ({
-        id: s.id,
-        name: s.title,
-        description: s.description || "",
-        responses: s.survey_responses?.[0]?.count || 0,
-        status: s.status?.toLowerCase() as Survey["status"],
-        createdAt: s.created_at?.split("T")[0] || "",
-      }));
+      const mapped: Survey[] = (data || []).map((s: any) => {
+        const rawStatus = s.status?.toLowerCase();
+        const normalizedStatus = rawStatus === "archived"
+          ? "closed"
+          : rawStatus === "active" || rawStatus === "draft"
+          ? rawStatus
+          : "draft";
+
+        return {
+          id: s.id,
+          name: s.title,
+          description: s.description || "",
+          responses: s.survey_responses?.[0]?.count || 0,
+          status: normalizedStatus as Survey["status"],
+          createdAt: s.created_at?.split("T")[0] || "",
+          branchId: s.branch_id || undefined,
+          branchName: s.branches?.name || undefined,
+        };
+      });
 
       setSurveys(mapped);
     } catch (err: any) {
@@ -186,10 +201,13 @@ export function Surveys() {
           {surveys.map((survey) => (
             <Card key={survey.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <CardTitle className="mb-2">{survey.name}</CardTitle>
                     <p className="text-sm text-gray-600">{survey.description}</p>
+                    {survey.branchName && (
+                      <p className="text-xs text-gray-500 mt-2">Branch: {survey.branchName}</p>
+                    )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

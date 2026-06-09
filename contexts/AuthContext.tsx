@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface User {
   id: string;
@@ -33,7 +34,7 @@ const ADMIN_EMAIL = "admin@gmail.com";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

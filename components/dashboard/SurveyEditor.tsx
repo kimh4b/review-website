@@ -14,9 +14,9 @@ import {
     SelectValue,
 } from "../ui/select";
 import { ArrowLeft, Plus, Trash2, GripVertical, Loader2, X } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Question {
     id: string;
@@ -24,6 +24,12 @@ interface Question {
     text: string;
     required: boolean;
     options: string[];
+}
+
+interface BranchOption {
+    id: string;
+    name: string;
+    location?: string;
 }
 
 interface SurveyEditorProps {
@@ -34,9 +40,28 @@ interface SurveyEditorProps {
 
 export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
     const { user } = useAuth();
-    const supabase = createClient();
+
     const [saving, setSaving] = useState(false);
     const [loadingQuestions, setLoadingQuestions] = useState(!!survey?.id);
+    const [branches, setBranches] = useState<BranchOption[]>([]);
+    const [selectedBranchId, setSelectedBranchId] = useState<string>(survey?.branchId ?? "none");
+    const [status, setStatus] = useState<string>(
+        survey?.status?.toLowerCase() === "archived"
+            ? "closed"
+            : survey?.status?.toLowerCase() ?? "draft"
+    );
+
+    useEffect(() => {
+        if (!survey) return;
+        const rawStatus = survey.status?.toLowerCase();
+        setStatus(
+            rawStatus === "archived"
+                ? "closed"
+                : rawStatus === "active" || rawStatus === "closed" || rawStatus === "draft"
+                ? rawStatus
+                : "draft"
+        );
+    }, [survey?.status]);
 
     const [formData, setFormData] = useState({
         name: survey?.name || "",
@@ -76,6 +101,27 @@ export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
 
         fetchQuestions();
     }, [survey?.id]);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const fetchBranches = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from("branches")
+                    .select("id, name, location")
+                    .eq("owner_id", user.id)
+                    .order("created_at", { ascending: false });
+
+                if (error) throw error;
+                setBranches(data || []);
+            } catch (err: any) {
+                toast.error("Failed to load branches: " + err.message);
+            }
+        };
+
+        fetchBranches();
+    }, [user, survey?.id]);
 
     const addQuestion = () => {
         setQuestions([...questions, {
@@ -125,39 +171,57 @@ export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
         try {
             let surveyId = survey?.id;
 
+            const statusForDb =
+                status === "closed" ? "Archived"
+                : status === "active" ? "Active"
+                : "Draft";
+
+            // Log payload and status to help debug 400 responses from Supabase
+            const surveyPayload = {
+                title: formData.name,
+                description: formData.description,
+                status: statusForDb,
+                restaurant_name: user.restaurantName,
+                branch_id: selectedBranchId === "none" ? null : selectedBranchId,
+            };
+            console.debug("Saving survey payload", { surveyId: survey?.id, payload: surveyPayload });
+
             if (survey?.id) {
                 const { error } = await supabase
                     .from("surveys")
-                    .update({
-                        title: formData.name,
-                        description: formData.description,
-                        restaurant_name: user.restaurantName,
-                    })
+                    .update(surveyPayload)
                     .eq("id", survey.id)
                     .eq("owner_id", user.id);
 
-                if (error) throw error;
+                if (error) {
+                    console.error("Supabase update error", { error, payload: surveyPayload, id: survey.id });
+                    // Re-throw so our outer catch can handle presenting the error
+                    throw error;
+                }
 
                 const { error: deleteError } = await supabase
                     .from("survey_questions")
                     .delete()
                     .eq("survey_id", survey.id);
 
-                if (deleteError) throw deleteError;
+                if (deleteError) {
+                    console.error("Supabase delete questions error", { deleteError, surveyId: survey.id });
+                    throw deleteError;
+                }
             } else {
                 const { data, error } = await supabase
                     .from("surveys")
                     .insert({
                         owner_id: user.id,
-                        title: formData.name,
-                        description: formData.description,
-                        status: "Draft",
-                        restaurant_name: user.restaurantName,
+                        ...surveyPayload,
                     })
                     .select()
                     .single();
 
-                if (error) throw error;
+                if (error) {
+                    console.error("Supabase insert error", { error, payload: surveyPayload });
+                    throw error;
+                }
                 surveyId = data.id;
             }
 
@@ -185,7 +249,10 @@ export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
             toast.success(survey ? "Survey updated!" : "Survey created!");
             onSave({ ...formData, questions });
         } catch (err: any) {
-            toast.error("Failed to save: " + err.message);
+            console.error("Failed to save survey", err);
+            // If Supabase provides details, include them in the toast for debugging
+            const details = err?.details || err?.message || JSON.stringify(err);
+            toast.error("Failed to save: " + details);
         } finally {
             setSaving(false);
         }
@@ -209,7 +276,7 @@ export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
                     <Card>
                         <CardHeader><CardTitle>Survey Details</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="space-y-2">
+                                            <div className="space-y-2">
                                 <Label htmlFor="survey-name">Survey Name</Label>
                                 <Input
                                     id="survey-name"
@@ -218,6 +285,35 @@ export function SurveyEditor({ survey, onSave, onCancel }: SurveyEditorProps) {
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     required
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="survey-branch">Branch</Label>
+                                <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                                    <SelectTrigger id="survey-branch">
+                                        <SelectValue placeholder="Select branch (optional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No branch</SelectItem>
+                                        {branches.map((branch) => (
+                                            <SelectItem key={branch.id} value={branch.id}>
+                                                {branch.name}{branch.location ? ` — ${branch.location}` : ""}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="survey-status">Status</Label>
+                                <Select value={status} onValueChange={setStatus}>
+                                    <SelectTrigger id="survey-status">
+                                        <SelectValue placeholder="Select status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="draft">Draft</SelectItem>
+                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="closed">Closed</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="survey-description">Description</Label>

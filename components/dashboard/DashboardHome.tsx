@@ -8,6 +8,8 @@ import {
     Star,
     Users,
     AlertCircle,
+    CheckCircle,
+    MinusCircle,
     Loader2,
 } from "lucide-react";
 import {
@@ -23,6 +25,7 @@ import {
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
 
 interface FeedbackItem {
     id: string;
@@ -83,7 +86,7 @@ function extractComment(
 
 export function DashboardHome({ onNeedsAttention }: DashboardHomeProps) {
     const { user } = useAuth();
-    const supabase = createClient();
+   
 
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState<Stats>({
@@ -428,11 +431,13 @@ export function DashboardHome({ onNeedsAttention }: DashboardHomeProps) {
                     }
                   `}
                                     >
-                                        {feedback.sentiment === "positive"
-                                            ? "😊"
-                                            : feedback.sentiment === "negative"
-                                              ? "😞"
-                                              : "😐"}
+                                        {feedback.sentiment === "positive" ? (
+                                            <CheckCircle className="w-5 h-5" />
+                                        ) : feedback.sentiment === "negative" ? (
+                                            <AlertCircle className="w-5 h-5" />
+                                        ) : (
+                                            <MinusCircle className="w-5 h-5" />
+                                        )}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-1">

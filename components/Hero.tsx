@@ -1,14 +1,11 @@
 "use client"
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "./ui/button";
 import { ArrowRight, Star, ChartNoAxesCombined, UserStar } from "lucide-react";
-import { SignUpModal } from "./FreeTrialModal";
-import { DemoModal } from "./DemoModal";
 
 export function Hero({ onLoginClick }: { onLoginClick?: () => void }) {
-    const [showSignUp, setShowSignUp] = useState(false);
-    const [showDemo, setShowDemo] = useState(false);
+    const router = useRouter();
 
     return (
         <>
@@ -29,31 +26,29 @@ export function Hero({ onLoginClick }: { onLoginClick?: () => void }) {
                         </h1>
 
                         <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-                            Get more real feedback from customer reviews. Start
-                            your free trial today.
+                            Get more real feedback from customer reviews. Create your account to get started!
                         </p>
 
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                             <Button
                                 size="lg"
                                 className="bg-orange-500 hover:bg-orange-600 text-white gap-2"
-                                onClick={() => setShowSignUp(true)}
+                                onClick={() => router.push("/auth/sign-up")}
                             >
-                                Start Free Trial
+                                Get Started
                                 <ArrowRight className="w-5 h-5" />
                             </Button>
                             <Button
                                 size="lg"
                                 variant="outline"
-                                onClick={() => setShowDemo(true)}
+                                onClick={() => router.push("/auth/sign-in")}
                             >
-                                Request Demo
+                                Sign In
                             </Button>
                         </div>
 
                         <p className="text-sm text-gray-500 mt-4">
-                            No credit card required • 14-day free trial • Cancel
-                            anytime
+                            Try our survey services for free — best for restaurants owners!
                         </p>
                     </div>
 
@@ -94,8 +89,6 @@ export function Hero({ onLoginClick }: { onLoginClick?: () => void }) {
                 </div>
             </div>
 
-            <SignUpModal open={showSignUp} onClose={() => setShowSignUp(false)} />
-            <DemoModal open={showDemo} onClose={() => setShowDemo(false)} />
         </>
     );
 }

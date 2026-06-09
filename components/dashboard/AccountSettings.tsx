@@ -10,10 +10,10 @@ import { useAuth } from "../../contexts/AuthContext";
 import { User, Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-
+import { supabase } from "@/lib/supabaseClient";
 export function AccountSettings() {
   const { user } = useAuth();
-  const supabase = createClient();
+
 
   // Profile state
   const [fullName, setFullName] = useState(user?.fullName || "");

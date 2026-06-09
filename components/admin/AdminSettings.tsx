@@ -9,10 +9,11 @@ import { User, Loader2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabaseClient";
 
 export function AdminSettings() {
   const { user } = useAuth();
-  const supabase = createClient();
+
 
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);

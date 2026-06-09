@@ -6,6 +6,7 @@ import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Star, Loader2, MessageSquare, ChevronDown, ChevronUp, AlertCircle, CheckCircle, XCircle, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Restaurant {
   id: string;
@@ -48,7 +49,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export function AdminReviews() {
-  const supabase = createClient();
+
 
   const [loading, setLoading] = useState(true);
   const [reviews, setReviews] = useState<Review[]>([]);

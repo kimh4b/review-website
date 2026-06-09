@@ -3,11 +3,12 @@
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function QRRedirectPage() {
   const params = useParams();
   const router = useRouter();
-  const supabase = createClient();
+
 
   useEffect(() => {
     const trackAndRedirect = async () => {

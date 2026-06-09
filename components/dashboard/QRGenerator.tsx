@@ -8,19 +8,29 @@ import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Download, Copy, Check, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
+
+interface BranchOption {
+  id: string;
+  name: string;
+  location?: string;
+}
 
 interface Survey {
   id: string;
   name: string;
+  branchId?: string;
+  branchName?: string;
 }
 
 export function QRGenerator() {
   const { user } = useAuth();
-  const supabase = createClient();
 
+
+  const [branches, setBranches] = useState<BranchOption[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("all");
   const [loadingSurveys, setLoadingSurveys] = useState(true);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>("");
   const [brandColor, setBrandColor] = useState("#f97316");
@@ -56,27 +66,55 @@ export function QRGenerator() {
 
   useEffect(() => {
     if (!user) return;
-    fetchSurveys();
+    fetchBranches();
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchSurveys();
+  }, [user, selectedBranchId]);
+
+  const fetchBranches = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("branches")
+        .select("id, name, location")
+        .eq("owner_id", user!.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setBranches(data || []);
+    } catch (err: any) {
+      toast.error("Failed to load branches: " + err.message);
+    }
+  };
 
   const fetchSurveys = async () => {
     setLoadingSurveys(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("surveys")
-        .select("id, title")
+        .select("id, title, branch_id, branches(name)")
         .eq("owner_id", user!.id)
         .order("created_at", { ascending: false });
+
+      if (selectedBranchId !== "all") {
+        query = query.eq("branch_id", selectedBranchId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
       const mapped = (data || []).map((s: any) => ({
         id: s.id,
         name: s.title,
+        branchId: s.branch_id || undefined,
+        branchName: s.branches?.name || undefined,
       }));
 
       setSurveys(mapped);
-      if (mapped.length > 0) setSelectedSurveyId(mapped[0].id);
+      setSelectedSurveyId(mapped[0]?.id || "");
     } catch (err: any) {
       toast.error("Failed to load surveys: " + err.message);
     } finally {
@@ -85,7 +123,7 @@ export function QRGenerator() {
   };
 
   const surveyUrl = selectedSurveyId
-    ? `${window.location.origin}/qr/${selectedSurveyId}`
+    ? `${window.location.origin}/survey/${selectedSurveyId}`
     : "";
 
   // Use goqr.me free API to generate a real QR code
@@ -141,7 +179,23 @@ export function QRGenerator() {
                 <CardTitle>Customize Your QR Code</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Survey selector */}
+                <div className="space-y-2">
+                  <Label htmlFor="branch-select">Branch</Label>
+                  <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                    <SelectTrigger id="branch-select">
+                      <SelectValue placeholder="All branches" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All branches</SelectItem>
+                      {branches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}{branch.location ? ` — ${branch.location}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="survey-select">Select Survey</Label>
                   <Select value={selectedSurveyId} onValueChange={setSelectedSurveyId}>
@@ -151,7 +205,7 @@ export function QRGenerator() {
                     <SelectContent>
                       {surveys.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.name}
+                          {s.name}{s.branchName ? ` — ${s.branchName}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Store, Users, FileText, MessageSquare, Loader2, Activity, CheckCircle } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Stats {
   totalRestaurants: number;
@@ -19,7 +20,6 @@ interface RecentUser {
 }
 
 export function AdminOverview() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats>({
   totalRestaurants: 0,

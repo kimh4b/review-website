@@ -5,12 +5,13 @@ import { toast } from "sonner";
 
 interface ThankYouPageProps {
   restaurantName: string;
+  branchName?: string;
+  discountCode: string;
   onClose?: () => void;
 }
 
-export function ThankYouPage({ restaurantName, onClose }: ThankYouPageProps) {
+export function ThankYouPage({ restaurantName, branchName, discountCode, onClose }: ThankYouPageProps) {
   const [copied, setCopied] = useState(false);
-  const discountCode = "THANKS10";
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(discountCode);
@@ -32,7 +33,9 @@ export function ThankYouPage({ restaurantName, onClose }: ThankYouPageProps) {
             <CheckCircle2 className="w-12 h-12 text-white" />
           </div>
           <h1 className="text-3xl mb-2">Thank you!</h1>
-          <p className="text-gray-600">Your feedback helps {restaurantName} restaurant get better</p>
+          <p className="text-gray-600">
+            Your feedback helps {branchName ? `${branchName} at ${restaurantName}` : `${restaurantName}`} get better
+          </p>
         </div>
 
         {/* Discount Code */}

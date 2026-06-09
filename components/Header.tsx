@@ -45,17 +45,11 @@ export function Header() {
         >
           Reference
         </button>
-        <button
-          onClick={() => handleNavClick("pricing")}
-          className="text-gray-600 hover:text-gray-900 transition cursor-pointer"
-        >
-          Pricing
-        </button>
         <Button variant="ghost" onClick={() => router.push("/auth/sign-in")}>
           Sign In
         </Button>
         <Button variant="outline" onClick={() => router.push("/auth/sign-up")}>
-          Request Demo
+          Sign Up
         </Button>
       </div>
     </nav>

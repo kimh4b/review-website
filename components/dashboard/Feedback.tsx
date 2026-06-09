@@ -9,10 +9,19 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
+
+interface BranchOption {
+  id: string;
+  name: string;
+  location?: string;
+}
 
 interface Survey {
   id: string;
   name: string;
+  branchId?: string;
+  branchName?: string;
 }
 
 interface Question {
@@ -47,13 +56,16 @@ const COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#f97316"
 
 interface FeedbackProps {
   onViewReview?: () => void;
+  defaultBranchId?: string;
 }
 
-export function Feedback({ onViewReview }: FeedbackProps) {
+export function Feedback({ onViewReview, defaultBranchId }: FeedbackProps) {
   const { user } = useAuth();
-  const supabase = createClient();
+
 
   const [loading, setLoading] = useState(true);
+  const [branches, setBranches] = useState<BranchOption[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(defaultBranchId ?? "all");
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string>("");
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -61,33 +73,75 @@ export function Feedback({ onViewReview }: FeedbackProps) {
   const [recentFeedback, setRecentFeedback] = useState<FeedbackItem[]>([]);
   const [dateRange, setDateRange] = useState("30");
 
+  useEffect(() => {
+    setSelectedBranchId(defaultBranchId ?? "all");
+  }, [defaultBranchId]);
+
   // Add this above the return statement
   const renderLabel = ({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`;
   const renderPercentLabel = ({ percent }: any) => `${(percent * 100).toFixed(0)}%`;
   useEffect(() => {
     if (!user) return;
-    fetchSurveys();
+    fetchBranches();
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchSurveys();
+  }, [user, selectedBranchId]);
 
   useEffect(() => {
     if (selectedSurveyId) fetchSurveyData();
   }, [selectedSurveyId, dateRange]);
 
-  const fetchSurveys = async () => {
+  const fetchBranches = async () => {
     try {
       const { data, error } = await supabase
-        .from("surveys")
-        .select("id, title")
+        .from("branches")
+        .select("id, name, location")
         .eq("owner_id", user!.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      const list = (data || []).map((s: any) => ({ id: s.id, name: s.title }));
-      setSurveys(list);
-      if (list.length > 0) setSelectedSurveyId(list[0].id);
-      else setLoading(false);
+      setBranches(data || []);
     } catch (err: any) {
-      toast.error("Failed to load surveys");
+      toast.error("Failed to load branches: " + err.message);
+    }
+  };
+
+  const fetchSurveys = async () => {
+    try {
+      let query = supabase
+        .from("surveys")
+        .select("id, title, branch_id, branches(name)")
+        .eq("owner_id", user!.id)
+        .order("created_at", { ascending: false });
+
+      if (selectedBranchId !== "all") {
+        query = query.eq("branch_id", selectedBranchId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const list = (data || []).map((s: any) => ({
+        id: s.id,
+        name: s.title,
+        branchId: s.branch_id || undefined,
+        branchName: s.branches?.name || undefined,
+      }));
+
+      setSurveys(list);
+      if (list.length > 0) {
+        if (!list.some((s) => s.id === selectedSurveyId)) {
+          setSelectedSurveyId(list[0].id);
+        }
+      } else {
+        setSelectedSurveyId("");
+      }
+      if (list.length === 0) setLoading(false);
+    } catch (err: any) {
+      toast.error("Failed to load surveys: " + err.message);
       setLoading(false);
     }
   };
@@ -243,13 +297,29 @@ export function Feedback({ onViewReview }: FeedbackProps) {
 
       {/* Survey + Date filters */}
       <div className="flex flex-col sm:flex-row gap-3">
+        <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+          <SelectTrigger className="w-full sm:w-72">
+            <SelectValue placeholder="Select branch" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All branches</SelectItem>
+            {branches.map((branch) => (
+              <SelectItem key={branch.id} value={branch.id}>
+                {branch.name}{branch.location ? ` — ${branch.location}` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <Select value={selectedSurveyId} onValueChange={setSelectedSurveyId}>
           <SelectTrigger className="w-full sm:w-72">
             <SelectValue placeholder="Select survey" />
           </SelectTrigger>
           <SelectContent>
             {surveys.map(s => (
-              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}{s.branchName ? ` — ${s.branchName}` : ""}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>

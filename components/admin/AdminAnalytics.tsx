@@ -8,11 +8,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 const COLORS = ["#f97316", "#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4"];
 
 export function AdminAnalytics() {
-  const supabase = createClient();
+  
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalRestaurants: 0,

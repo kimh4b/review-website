@@ -7,6 +7,7 @@ import { Card } from "../ui/card";
 import { Star, ArrowRight, ArrowLeft, AlertCircle, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Question {
   id: string;
@@ -37,7 +38,7 @@ export function SurveyForm({
   onUpdate,
   isDemo,
 }: SurveyFormProps) {
-  const supabase = createClient();
+
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);

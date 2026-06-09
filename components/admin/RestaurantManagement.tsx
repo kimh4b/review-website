@@ -14,6 +14,7 @@ import {
 } from "../ui/dropdown-menu";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Restaurant {
   id: string; // owner_id
@@ -49,7 +50,7 @@ interface CreateForm {
 type View = "list" | "restaurant" | "survey";
 
 export function RestaurantManagement() {
-  const supabase = createClient();
+
 
   const [view, setView] = useState<View>("list");
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
