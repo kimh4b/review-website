@@ -8,8 +8,8 @@
 function yesNoToStar(answer: any): number | null {
   if (typeof answer !== "string") return null;
   const lower = answer.toLowerCase().trim();
-  if (lower === "yes") return 3;
-  if (lower === "no") return 2;
+  if (lower === "yes") return 5;
+  if (lower === "no") return 1;
   return null;
 }
 
