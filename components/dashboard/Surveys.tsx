@@ -99,9 +99,9 @@ export function Surveys() {
   };
 
   const handlePreview = (survey: Survey) => {
-    window.open(`/survey/${survey.id}`, "_blank");
+    window.open(`/survey/${survey.id}?preview=true`, "_blank");
   };
-
+  
   const handleCopyLink = (survey: Survey) => {
     navigator.clipboard.writeText(`${window.location.origin}/survey/${survey.id}`);
     toast.success("Link copied!");
