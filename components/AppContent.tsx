@@ -24,7 +24,7 @@ export default function AppContent() {
             <Features />
             <TopRatedStores />
             <Testimonials />
-            <Pricing />
+          
             <Footer />
 
             <Link

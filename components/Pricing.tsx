@@ -79,14 +79,18 @@ export function Pricing() {
 
   return (
     <>
-      <section id="pricing" className="py-24 bg-gradient-to-br from-gray-50 to-white">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center mb-16">
-            <h2 className="text-4xl md:text-5xl mb-4">
-              Start today with our service
+      <section id="pricing" className="py-32 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative overflow-hidden">
+        {/* Decorative gradient blurs */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500 rounded-full blur-3xl opacity-10" />
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-orange-500 rounded-full blur-3xl opacity-10" />
+        
+        <div className="container mx-auto px-4 relative z-10">
+          <div className="max-w-3xl mx-auto text-center mb-20">
+            <h2 className="text-4xl md:text-5xl mb-6 text-white">
+              Simple, transparent pricing
             </h2>
-            <p className="text-xl text-gray-600">
-              Choose the plan that's right for your restaurant. All plans include a 14-day free trial.
+            <p className="text-lg md:text-xl text-gray-300 leading-relaxed">
+              Choose the perfect plan for your restaurant. All plans include a 14-day free trial with no credit card required.
             </p>
           </div>
 
@@ -94,47 +98,46 @@ export function Pricing() {
             {plans.map((plan, index) => (
               <div 
                 key={index}
-                className={`relative bg-white rounded-2xl p-8 border-2 transition-all duration-300 hover:shadow-xl ${
+                className={`group relative bg-gray-800 rounded-3xl p-8 transition-all duration-300 hover:shadow-2xl ${
                   plan.popular 
-                    ? 'border-orange-500 shadow-lg scale-105' 
-                    : 'border-gray-200'
+                    ? 'border-2 border-orange-500 shadow-2xl md:scale-105 bg-gradient-to-br from-gray-800 to-gray-900' 
+                    : 'border border-gray-700 hover:border-gray-600'
                 }`}
               >
                 {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <div className="bg-orange-500 text-white px-4 py-1 rounded-full flex items-center gap-1 text-sm">
+                  <div className="absolute -top-5 left-1/2 -translate-x-1/2">
+                    <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-6 py-2 rounded-full flex items-center gap-2 text-sm shadow-lg">
                       <Zap className="w-4 h-4 fill-white" />
                       Most Popular
                     </div>
                   </div>
                 )}
 
-                <div className="text-center mb-6">
-                  <h3 className="text-2xl mb-2">{plan.name}</h3>
-                  <div className="flex items-baseline justify-center gap-1 mb-2">
-                    <span className="text-4xl">{plan.price}</span>
-                    <span className="text-gray-600">{plan.period}</span>
+                <div className="text-center mb-8">
+                  <h3 className="text-3xl mb-3 text-white">{plan.name}</h3>
+                  <div className="flex items-baseline justify-center gap-1 mb-3">
+                    <span className="text-5xl text-white">{plan.price}</span>
+                    <span className="text-gray-400 text-lg">{plan.period}</span>
                   </div>
-                  <p className="text-gray-600 text-sm">{plan.description}</p>
+                  <p className="text-gray-400 text-base">{plan.description}</p>
                 </div>
 
                 <Button 
-                  className={`w-full mb-6 rounded-sm ${
+                  className={`w-full mb-8 py-6 text-base transition-all duration-300 ${
                     plan.popular 
-                      ? 'bg-orange-500 hover:bg-orange-600 text-white' 
-                      : ''
+                      ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg hover:shadow-xl' 
+                      : 'bg-gray-700 hover:bg-gray-600 text-white'
                   }`}
-                  variant={plan.popular ? 'default' : 'outline'}
                   onClick={() => handleCTA(plan.name)}
                 >
                   {plan.cta}
                 </Button>
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {plan.features.map((feature, featureIndex) => (
-                    <div key={featureIndex} className="flex items-start gap-3">
-                      <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-gray-700 text-sm">{feature}</span>
+                    <div key={featureIndex} className="flex items-start gap-4">
+                      <Check className="w-5 h-5 text-green-400 flex-shrink-0 mt-1" />
+                      <span className="text-gray-300 text-base leading-relaxed">{feature}</span>
                     </div>
                   ))}
                 </div>
@@ -142,9 +145,9 @@ export function Pricing() {
             ))}
           </div>
 
-          <div className="mt-16 text-center">
-            <p className="text-gray-600 mb-4">
-              All plans include: Mobile app access
+          <div className="mt-20 text-center">
+            <p className="text-gray-300 mb-4 text-lg">
+              All plans include: Mobile app access • Email support • Data export
             </p>
             <p className="text-sm text-gray-500">
               14-day free trial • No credit card required • Cancel anytime

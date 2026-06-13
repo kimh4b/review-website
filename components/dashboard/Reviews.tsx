@@ -317,7 +317,7 @@ export function Reviews({ defaultFilter, expandReviewId }: ReviewsProps) {
                           <div className="flex gap-0.5">
                             {[1,2,3,4,5].map(i => <Star key={i} className={`w-4 h-4 ${i <= review.mainRating ? "text-yellow-500 fill-yellow-500" : "text-gray-300"}`} />)}
                           </div>
-                          <span className="text-sm font-medium text-gray-600">{review.mainRating}/5</span>
+                         
                           {review.sentiment === "negative" && (
                             <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
                               <AlertCircle className="w-3 h-3" />Needs attention

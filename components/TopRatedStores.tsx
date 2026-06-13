@@ -41,7 +41,7 @@ const topStores = [
 
 export function TopRatedStores() {
     return (
-        <section className="py-24 bg-gradient-to-br from-orange-50 to-amber-50">
+        <section id="partners" className="py-24 bg-gradient-to-br from-orange-50 to-amber-50">
             <div className="container mx-auto px-4">
                 <div className="max-w-3xl mx-auto text-center mb-16">
                     <h2 className="text-4xl md:text-5xl mb-4">

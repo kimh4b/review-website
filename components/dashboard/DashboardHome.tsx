@@ -26,6 +26,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
+import { extractMainRating, extractComment, getSentiment, timeAgo } from "./surveyHelpers";
 
 interface FeedbackItem {
     id: string;
@@ -46,43 +47,7 @@ interface DashboardHomeProps {
     onNeedsAttention?: (reviewId?: string) => void;
 }
 
-function getSentiment(rating: number): "positive" | "neutral" | "negative" {
-    if (rating >= 4) return "positive";
-    if (rating === 3) return "neutral";
-    return "negative";
-}
 
-function timeAgo(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins} minute${mins !== 1 ? "s" : ""} ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs} hour${hrs !== 1 ? "s" : ""} ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days} day${days !== 1 ? "s" : ""} ago`;
-}
-
-function extractRating(answers: Record<string, any>): number {
-    const ratingValues = Object.values(answers).filter(
-        (v: any) => typeof v === "number" && v >= 1 && v <= 5,
-    ) as number[];
-    return ratingValues.length > 0
-        ? Math.round(
-              ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length,
-          )
-        : 3;
-}
-
-function extractComment(
-    answers: Record<string, any>,
-    questionTypeMap: Record<string, string>,
-): string {
-    return Object.entries(answers)
-        .filter(([key]) => questionTypeMap[key] === "text")
-        .map(([, value]) => (typeof value === "string" ? value.trim() : ""))
-        .filter((v) => v.length > 0)
-        .join(" • ");
-}
 
 export function DashboardHome({ onNeedsAttention }: DashboardHomeProps) {
     const { user } = useAuth();
@@ -151,7 +116,7 @@ export function DashboardHome({ onNeedsAttention }: DashboardHomeProps) {
 
             // Build stats
             const allRatings = allResponses.map((r: any) =>
-                extractRating(r.answers || {}),
+                extractMainRating(r.answers || {}, questionTypeMap),
             );
             const avgRating = allRatings.length
                 ? parseFloat(
@@ -175,7 +140,7 @@ export function DashboardHome({ onNeedsAttention }: DashboardHomeProps) {
                 .slice(0, 5)
                 .map((r: any) => {
                     const answers = r.answers || {};
-                    const rating = extractRating(answers);
+                    const rating = extractMainRating(answers, questionTypeMap);
                     const comment = extractComment(answers, questionTypeMap);
                     return {
                         id: r.id,
@@ -212,7 +177,7 @@ export function DashboardHome({ onNeedsAttention }: DashboardHomeProps) {
                     (r: any) => r.survey_id === s.id,
                 );
                 const surveyRatings = surveyResponses.map((r: any) =>
-                    extractRating(r.answers || {}),
+                    extractMainRating(r.answers || {}, questionTypeMap),
                 );
                 const avg = surveyRatings.length
                     ? parseFloat(
@@ -291,6 +256,9 @@ export function DashboardHome({ onNeedsAttention }: DashboardHomeProps) {
                                     className={`w-4 h-4 ${i <= Math.round(stats.avgRating) ? "text-yellow-500 fill-yellow-500" : "text-gray-300"}`}
                                 />
                             ))}
+                        </div>
+                        <div className="text-sm text-gray-500 mt-2">
+                            {stats.avgRating || "0"} / 5
                         </div>
                     </CardContent>
                 </Card>
